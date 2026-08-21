@@ -1,10 +1,11 @@
 ﻿import streamlit as st
 import pandas as pd
+import time
 import streamlit.components.v1 as components
 
 st.set_page_config(page_title="Painel de Manutenção", layout="wide")
 
-# Recarrega a página automaticamente a cada 15 segundos sem bibliotecas extras
+# Recarrega a página automaticamente a cada 15 segundos
 components.html(
     """
     <script>
@@ -19,17 +20,39 @@ components.html(
 
 st.title("Painel de Manutenção")
 
-URL_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRgqjurSWlFiWjsy3V2cpz9vju85d1-mGNB0wIucZm9Rx_Af0cweCNbXvlEIblD9TlY2bmiYVY5T4N0/pub?gid=1559301826&single=true&output=csv"
+# Adicionado parâmetro nocache para forçar o Google Sheets a enviar os dados em tempo real
+URL_BASE = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRgqjurSWlFiWjsy3V2cpz9vju85d1-mGNB0wIucZm9Rx_Af0cweCNbXvlEIblD9TlY2bmiYVY5T4N0/pub?gid=1559301826&single=true&output=csv"
 
-@st.cache_data(ttl=1)
+@st.cache_data(ttl=0)
 def carregar_dados():
-    df = pd.read_csv(URL_CSV)
+    # Adiciona timestamp dinamico na URL para evitar cache retido pelo Google
+    url_dinamica = f"{URL_BASE}&_nocache={int(time.time())}"
+    df = pd.read_csv(url_dinamica)
     df.columns = df.columns.str.strip()
-    col_data = next((c for c in df.columns if 'Carimbo' in c or 'Data' in c), None)
-    if col_data:
-        df['Data_dt'] = pd.to_datetime(df[col_data], dayfirst=True, errors='coerce')
+    
+    # Identifica colunas de data de abertura e data de fechamento/conclusao
+    col_data_abertura = next((c for c in df.columns if 'Carimbo' in c or 'Abertura' in c or 'Data' in c), None)
+    col_data_conclusao = next((c for c in df.columns if 'Conclusão' in c or 'Concluido' in c or 'Fechamento' in c or 'Solução' in c), None)
+    
+    if col_data_abertura:
+        df['Data_Abertura_dt'] = pd.to_datetime(df[col_data_abertura], dayfirst=True, errors='coerce')
     else:
-        df['Data_dt'] = pd.NaT
+        df['Data_Abertura_dt'] = pd.NaT
+
+    if col_data_conclusao and col_data_conclusao in df.columns:
+        df['Data_Conclusao_dt'] = pd.to_datetime(df[col_data_conclusao], dayfirst=True, errors='coerce')
+    else:
+        df['Data_Conclusao_dt'] = pd.NaT
+
+    # Cálculo dinâmico do tempo de resolução (Horas de Aberto até Concluído)
+    def calcular_horas(row):
+        if pd.notnull(row['Data_Abertura_dt']) and pd.notnull(row['Data_Conclusao_dt']):
+            diff = (row['Data_Conclusao_dt'] - row['Data_Abertura_dt']).total_seconds() / 3600
+            if diff >= 0:
+                return f"{diff:.1f} hrs"
+        return "Em Aberto"
+
+    df['Tempo de Atendimento'] = df.apply(calcular_horas, axis=1)
     return df
 
 df = carregar_dados()
@@ -84,11 +107,11 @@ if col_setor and setor_selecionado:
     df_filtrado = df_filtrado[df_filtrado[col_setor].astype(str).str.contains('|'.join(setor_selecionado), case=False, na=False)]
 
 agora = pd.Timestamp.now()
-df_valid_data = df_filtrado.dropna(subset=['Data_dt'])
+df_valid_data = df_filtrado.dropna(subset=['Data_Abertura_dt'])
 
-chamados_dia = len(df_valid_data[df_valid_data['Data_dt'].dt.date == agora.date()])
-chamados_semana = len(df_valid_data[df_valid_data['Data_dt'].dt.isocalendar().week == agora.isocalendar().week])
-chamados_mes = len(df_valid_data[(df_valid_data['Data_dt'].dt.month == agora.month) & (df_valid_data['Data_dt'].dt.year == agora.year)])
+chamados_dia = len(df_valid_data[df_valid_data['Data_Abertura_dt'].dt.date == agora.date()])
+chamados_semana = len(df_valid_data[df_valid_data['Data_Abertura_dt'].dt.isocalendar().week == agora.isocalendar().week])
+chamados_mes = len(df_valid_data[(df_valid_data['Data_Abertura_dt'].dt.month == agora.month) & (df_valid_data['Data_Abertura_dt'].dt.year == agora.year)])
 
 st.markdown("### 📈 Volumetria de Chamados")
 m1, m2, m3, m4 = st.columns(4)
@@ -142,35 +165,18 @@ with c3:
 
 st.markdown("---")
 
-st.markdown("### ⚠️ Mapeamento de Gargalos")
-
-g1, g2 = st.columns(2)
-
-with g1:
-    st.markdown("**Top Setores com Mais Chamados**")
-    if col_setor and not df_filtrado.empty:
-        top_setores = df_filtrado[col_setor].value_counts().head(5)
-        st.bar_chart(top_setores)
-    else:
-        st.info("Sem dados de setor para exibir.")
-
-with g2:
-    st.markdown("**Top Equipamentos / Maiores Motivos**")
-    if col_maquina and not df_filtrado.empty:
-        top_maquinas = df_filtrado[col_maquina].value_counts().head(5)
-        st.bar_chart(top_maquinas)
-    else:
-        st.info("Sem dados de equipamento para exibir.")
-
-st.markdown("---")
-
 st.markdown("### 📋 Fila Operacional de Chamados")
 
-colunas_exibir = [c for c in [col_chamado, 'Data_dt', col_setor, col_maquina, col_prioridade, 'Status_Padrao'] if c in df_filtrado.columns]
+# Montagem das colunas com inclusão de Data de Conclusão e Tempo de Atendimento
+colunas_base = [col_chamado, 'Data_Abertura_dt', 'Data_Conclusao_dt', 'Tempo de Atendimento', col_setor, col_maquina, col_prioridade, 'Status_Padrao']
+colunas_exibir = [c for c in colunas_base if c in df_filtrado.columns]
 
-df_tabela = df_filtrado[colunas_exibir].rename(columns={'Status_Padrao': 'Status Final', 'Data_dt': 'Data/Hora'})
+df_tabela = df_filtrado[colunas_exibir].rename(columns={
+    'Status_Padrao': 'Status Final', 
+    'Data_Abertura_dt': 'Data/Hora Abertura',
+    'Data_Conclusao_dt': 'Data Conclusão'
+})
 
-# Aplica cor na LINHA INTEIRA de acordo com o status
 def estilar_linha_inteira(row):
     status = row['Status Final']
     if status == 'Concluído':
