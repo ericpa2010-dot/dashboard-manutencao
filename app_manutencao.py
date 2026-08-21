@@ -1,96 +1,171 @@
-import streamlit as st
+﻿import streamlit as st
 import pandas as pd
 
-# Configuração da página inteira
-st.set_page_config(page_title="Gestão de SLA - Manutenção", layout="wide")
+st.set_page_config(page_title="Painel de Manutenção", layout="wide")
+st.title("Painel de Manutenção")
 
-st.title("🛠️ Painel Interativo de Manutenção & SLA")
-
-# 1. Conexão direta com a planilha do Google Drive
 URL_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRgqjurSWlFiWjsy3V2cpz9vju85d1-mGNB0wIucZm9Rx_Af0cweCNbXvlEIblD9TlY2bmiYVY5T4N0/pub?gid=1559301826&single=true&output=csv"
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=30)
 def carregar_dados():
     df = pd.read_csv(URL_CSV)
-    # Limpa espaços em branco extras nos nomes das colunas
     df.columns = df.columns.str.strip()
-    
-    # Tratamento de Data/Hora se existir
-    col_data = [c for c in df.columns if 'Carimbo' in c or 'Data' in c]
+    col_data = next((c for c in df.columns if 'Carimbo' in c or 'Data' in c), None)
     if col_data:
-        df[col_data[0]] = pd.to_datetime(df[col_data[0]], dayfirst=True, errors='coerce')
-        
+        df['Data_dt'] = pd.to_datetime(df[col_data], dayfirst=True, errors='coerce')
+    else:
+        df['Data_dt'] = pd.NaT
     return df
 
 df = carregar_dados()
 
-# Mapeia colunas dinamicamente para evitar novos erros de KeyError
-col_maquina = next((c for c in df.columns if 'Máquina' in c or 'Maquina' in c or 'Equipamento' in c), None)
+col_status = next((c for c in df.columns if 'Status' in c or 'Situacao' in c or 'Situação' in c), None)
+col_setor = next((c for c in df.columns if 'Setor' in c or 'Nome e Setor' in c), None)
+col_maquina = next((c for c in df.columns if 'Máquina' in c or 'Equipamento' in c), None)
 col_prioridade = next((c for c in df.columns if 'Prioridade' in c), None)
 col_chamado = next((c for c in df.columns if 'N°' in c or 'Chamado' in c), df.columns[0])
 
-# Botão de atualização manual no painel
-if st.sidebar.button("🔄 Atualizar Dados Agora"):
-    st.cache_data.clear()
-    st.rerun()
+if not col_status:
+    df['Status'] = 'Pendente'
+    col_status = 'Status'
 
-# 2. Filtros Interativos na Barra Lateral
-st.sidebar.header("Filtros da Operação")
+def normalizar_status(val):
+    val_str = str(val).lower()
+    if 'conclu' in val_str or 'finaliz' in val_str or 'fechado' in val_str:
+        return 'Concluído'
+    elif 'atuando' in val_str or 'andamento' in val_str or 'em ' in val_str:
+        return 'Atuando'
+    else:
+        return 'Pendente'
 
-if col_maquina:
-    opcoes_maquinas = df[col_maquina].dropna().unique()
-    maquinas = st.sidebar.multiselect(
-        "Filtrar por Máquina/Equipamento:",
-        options=opcoes_maquinas,
-        default=opcoes_maquinas
+df['Status_Padrao'] = df[col_status].apply(normalizar_status)
+
+st.sidebar.header("Filtros por Operação")
+
+setores_padrao = [
+    "Manutenção", "Expedição", "Estoque", "Montagem", 
+    "Sala de Reunião", "Atendimento", "Sala de Treinamento", 
+    "Diretoria", "TI", "Antireflexo"
+]
+
+setores_presentes = df[col_setor].dropna().unique().tolist() if col_setor else []
+setores_finais = list(set(setores_padrao + setores_presentes))
+
+setor_selecionado = st.sidebar.multiselect(
+    "Setores da Empresa:",
+    options=setores_finais,
+    default=setores_finais
+)
+
+status_opcoes = ["Pendente", "Atuando", "Concluído"]
+status_selecionado = st.sidebar.multiselect(
+    "Status do Chamado:",
+    options=status_opcoes,
+    default=status_opcoes
+)
+
+df_filtrado = df[df['Status_Padrao'].isin(status_selecionado)]
+if col_setor and setor_selecionado:
+    df_filtrado = df_filtrado[df_filtrado[col_setor].astype(str).str.contains('|'.join(setor_selecionado), case=False, na=False)]
+
+agora = pd.Timestamp.now()
+df_valid_data = df_filtrado.dropna(subset=['Data_dt'])
+
+chamados_dia = len(df_valid_data[df_valid_data['Data_dt'].dt.date == agora.date()])
+chamados_semana = len(df_valid_data[df_valid_data['Data_dt'].dt.isocalendar().week == agora.isocalendar().week])
+chamados_mes = len(df_valid_data[(df_valid_data['Data_dt'].dt.month == agora.month) & (df_valid_data['Data_dt'].dt.year == agora.year)])
+
+st.markdown("### 📈 Volumetria de Chamados")
+m1, m2, m3, m4 = st.columns(4)
+m1.metric("Chamados Hoje", chamados_dia)
+m2.metric("Chamados Nesta Semana", chamados_semana)
+m3.metric("Chamados Neste Mês", chamados_mes)
+m4.metric("Total no Filtro", len(df_filtrado))
+
+st.markdown("---")
+
+st.markdown("### 🚦 Chamados na Fila")
+
+qtd_pendente = len(df_filtrado[df_filtrado['Status_Padrao'] == 'Pendente'])
+qtd_atuando = len(df_filtrado[df_filtrado['Status_Padrao'] == 'Atuando'])
+qtd_concluido = len(df_filtrado[df_filtrado['Status_Padrao'] == 'Concluído'])
+
+c1, c2, c3 = st.columns(3)
+
+with c1:
+    st.markdown(
+        f"""
+        <div style="background-color:#FFF3CD; padding:15px; border-radius:8px; border-left: 6px solid #FFC107;">
+            <h4 style="color:#856404; margin:0;">🟠 PENDENTE</h4>
+            <h2 style="color:#856404; margin:0;">{qtd_pendente}</h2>
+        </div>
+        """, 
+        unsafe_allow_html=True
     )
-    df_filtrado = df[df[col_maquina].isin(maquinas)]
-else:
-    df_filtrado = df
 
-# 3. Indicadores Gerais em Cartões
-col1, col2, col3 = st.columns(3)
-col1.metric("Total de Chamados Registrados", len(df_filtrado))
+with c2:
+    st.markdown(
+        f"""
+        <div style="background-color:#CCE5FF; padding:15px; border-radius:8px; border-left: 6px solid #004085;">
+            <h4 style="color:#004085; margin:0;">🔵 ATUANDO</h4>
+            <h2 style="color:#004085; margin:0;">{qtd_atuando}</h2>
+        </div>
+        """, 
+        unsafe_allow_html=True
+    )
 
-# Configuração de SLA por Prioridade
+with c3:
+    st.markdown(
+        f"""
+        <div style="background-color:#D4EDDA; padding:15px; border-radius:8px; border-left: 6px solid #28A745;">
+            <h4 style="color:#155724; margin:0;">🟢 CONCLUÍDO</h4>
+            <h2 style="color:#155724; margin:0;">{qtd_concluido}</h2>
+        </div>
+        """, 
+        unsafe_allow_html=True
+    )
+
 st.markdown("---")
-st.subheader("⏱️ Metas e Média de SLA por Prioridade")
 
-col_alta, col_media, col_baixa = st.columns(3)
+st.markdown("### ⚠️ Mapeamento de Gargalos")
 
-if col_prioridade:
-    qtd_alta = len(df_filtrado[df_filtrado[col_prioridade].astype(str).str.contains('Alta|Urgente', case=False, na=False)])
-    qtd_media = len(df_filtrado[df_filtrado[col_prioridade].astype(str).str.contains('Med|Média', case=False, na=False)])
-    qtd_baixa = len(df_filtrado[df_filtrado[col_prioridade].astype(str).str.contains('Baixa', case=False, na=False)])
-else:
-    qtd_alta = qtd_media = qtd_baixa = 0
+g1, g2 = st.columns(2)
 
-with col_alta:
-    st.error("🚨 URGENTE / ALTA")
-    st.write("**Meta de SLA:** até 2 horas")
-    st.metric("Chamados na Fila", qtd_alta)
+with g1:
+    st.markdown("**Top Setores com Mais Chamados**")
+    if col_setor and not df_filtrado.empty:
+        top_setores = df_filtrado[col_setor].value_counts().head(5)
+        st.bar_chart(top_setores)
+    else:
+        st.info("Sem dados de setor para exibir.")
 
-with col_media:
-    st.warning("⚠️ MÉDIA")
-    st.write("**Meta de SLA:** até 8 horas")
-    st.metric("Chamados na Fila", qtd_media)
+with g2:
+    st.markdown("**Top Equipamentos / Maiores Motivos**")
+    if col_maquina and not df_filtrado.empty:
+        top_maquinas = df_filtrado[col_maquina].value_counts().head(5)
+        st.bar_chart(top_maquinas)
+    else:
+        st.info("Sem dados de equipamento para exibir.")
 
-with col_baixa:
-    st.info("🟢 BAIXA")
-    st.write("**Meta de SLA:** até 24 horas")
-    st.metric("Chamados na Fila", qtd_baixa)
-
-# 4. Tabela Interativa de Pesquisa
 st.markdown("---")
-st.subheader("📋 Tabela Dinâmica de Chamados (Pesquisável)")
 
-busca = st.text_input("🔍 Digite para pesquisar (Nome, Máquina ou Defeito):")
+st.markdown("### 📋 Fila Operacional de Chamados")
 
-if busca:
-    df_exibicao = df_filtrado[
-        df_filtrado.astype(str).apply(lambda x: x.str.contains(busca, case=False)).any(axis=1)
-    ]
-else:
-    df_exibicao = df_filtrado
+colunas_exibir = [c for c in [col_chamado, 'Data_dt', col_setor, col_maquina, col_prioridade, 'Status_Padrao'] if c in df_filtrado.columns]
 
-st.dataframe(df_exibicao, use_container_width=True)
+def estilar_status(val):
+    if val == 'Concluído':
+        return 'background-color: #D4EDDA; color: #155724; font-weight: bold;'
+    elif val == 'Atuando':
+        return 'background-color: #CCE5FF; color: #004085; font-weight: bold;'
+    elif val == 'Pendente':
+        return 'background-color: #FFF3CD; color: #856404; font-weight: bold;'
+    return ''
+
+df_tabela = df_filtrado[colunas_exibir].rename(columns={'Status_Padrao': 'Status Final', 'Data_dt': 'Data/Hora'})
+
+st.dataframe(
+    df_tabela.style.map(estilar_status, subset=['Status Final']),
+    use_container_width=True,
+    hide_index=True
+)
