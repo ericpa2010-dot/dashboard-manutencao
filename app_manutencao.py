@@ -1,11 +1,21 @@
 ﻿import streamlit as st
 import pandas as pd
-from streamlit_autorefresh import st_autorefresh
+import streamlit.components.v1 as components
 
 st.set_page_config(page_title="Painel de Manutenção", layout="wide")
 
-# Recarrega o painel automaticamente a cada 15 segundos
-st_autorefresh(interval=15000, key="datarefresh")
+# Recarrega a página automaticamente a cada 15 segundos sem bibliotecas extras
+components.html(
+    """
+    <script>
+        setTimeout(function(){
+            window.location.reload();
+        }, 15000);
+    </script>
+    """,
+    height=0,
+    width=0
+)
 
 st.title("Painel de Manutenção")
 
@@ -160,17 +170,14 @@ colunas_exibir = [c for c in [col_chamado, 'Data_dt', col_setor, col_maquina, co
 
 df_tabela = df_filtrado[colunas_exibir].rename(columns={'Status_Padrao': 'Status Final', 'Data_dt': 'Data/Hora'})
 
-# Aplica a cor na LINHA INTEIRA de acordo com o status
+# Aplica cor na LINHA INTEIRA de acordo com o status
 def estilar_linha_inteira(row):
     status = row['Status Final']
     if status == 'Concluído':
-        # Verde suave para a linha inteira
         return ['background-color: #D4EDDA; color: #155724; font-weight: bold;'] * len(row)
     elif status == 'Atuando':
-        # Vermelho suave para a linha inteira
         return ['background-color: #F8D7DA; color: #721C24; font-weight: bold;'] * len(row)
     elif status == 'Pendente':
-        # Laranja suave para a linha inteira
         return ['background-color: #FFE8CC; color: #D9480F; font-weight: bold;'] * len(row)
     return [''] * len(row)
 
