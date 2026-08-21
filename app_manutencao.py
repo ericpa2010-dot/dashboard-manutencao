@@ -5,7 +5,6 @@ import streamlit.components.v1 as components
 
 st.set_page_config(page_title="Painel de Manutenção", layout="wide")
 
-# Recarrega a página automaticamente a cada 15 segundos
 components.html(
     """
     <script>
@@ -28,9 +27,6 @@ def carregar_dados():
     df = pd.read_csv(url_dinamica)
     df.columns = df.columns.astype(str).str.strip()
     
-    # Remove linhas totalmente vazias da planilha
-    df = df.dropna(how='all')
-    
     col_abertura = next((c for c in df.columns if 'Carimbo' in c or 'Abertura' in c), None)
     col_conclusao = next((c for c in df.columns if 'conclusã' in c.lower() or 'conclusa' in c.lower()), None)
     col_status_raw = next((c for c in df.columns if 'Status' in c or 'Situaç' in c or 'Situac' in c), None)
@@ -39,8 +35,10 @@ def carregar_dados():
     col_prioridade = next((c for c in df.columns if 'Prioridade' in c), None)
     col_chamado = next((c for c in df.columns if 'N°' in c or 'Chamado' in c), df.columns[0])
 
+    # Elimina linhas totalmente nulas ou sem carimbo de abertura válido
     if col_abertura:
         df['Data_Abertura_dt'] = pd.to_datetime(df[col_abertura], dayfirst=True, errors='coerce')
+        df = df.dropna(subset=['Data_Abertura_dt'])
     else:
         df['Data_Abertura_dt'] = pd.NaT
 
@@ -49,18 +47,16 @@ def carregar_dados():
     else:
         df['Data_Conclusao_dt'] = pd.NaT
 
-    def tratar_status(val):
-        val_clean = str(val).strip().lower()
-        if any(term in val_clean for term in ['conclu', 'finaliz', 'fechado', 'ok', 'pronto']):
+    def tratar_status(row):
+        val = str(row.get(col_status_raw, '')).strip().lower()
+        # Se houver data de conclusão preenchida, considera como Concluído automaticamente
+        if pd.notnull(row['Data_Conclusao_dt']) or any(term in val for term in ['conclu', 'finaliz', 'fechado', 'ok', 'pronto']):
             return 'Concluído'
-        elif any(term in val_clean for term in ['atuando', 'andamento', 'em ', 'fazendo', 'reparo']):
+        elif any(term in val for term in ['atuando', 'andamento', 'em ', 'fazendo', 'reparo']):
             return 'Atuando'
         return 'Pendente'
 
-    if col_status_raw:
-        df['Status_Padrao'] = df[col_status_raw].apply(tratar_status)
-    else:
-        df['Status_Padrao'] = 'Pendente'
+    df['Status_Padrao'] = df.apply(tratar_status, axis=1)
 
     def calcular_tempo(row):
         st_final = row['Status_Padrao']
