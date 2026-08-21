@@ -5,7 +5,7 @@ import streamlit.components.v1 as components
 
 st.set_page_config(page_title="Painel de Manutenção", layout="wide")
 
-# Recarrega a página automaticamente a cada 15 segundos
+# Recarrega a página automaticamente a cada 15 segundos sem dependência externa
 components.html(
     """
     <script>
@@ -20,39 +20,56 @@ components.html(
 
 st.title("Painel de Manutenção")
 
-# Adicionado parâmetro nocache para forçar o Google Sheets a enviar os dados em tempo real
 URL_BASE = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRgqjurSWlFiWjsy3V2cpz9vju85d1-mGNB0wIucZm9Rx_Af0cweCNbXvlEIblD9TlY2bmiYVY5T4N0/pub?gid=1559301826&single=true&output=csv"
 
 @st.cache_data(ttl=0)
 def carregar_dados():
-    # Adiciona timestamp dinamico na URL para evitar cache retido pelo Google
+    # Bypass no cache do Google Sheets adicionando o timestamp atual na requisicao
     url_dinamica = f"{URL_BASE}&_nocache={int(time.time())}"
     df = pd.read_csv(url_dinamica)
     df.columns = df.columns.str.strip()
     
-    # Identifica colunas de data de abertura e data de fechamento/conclusao
-    col_data_abertura = next((c for c in df.columns if 'Carimbo' in c or 'Abertura' in c or 'Data' in c), None)
-    col_data_conclusao = next((c for c in df.columns if 'Conclusão' in c or 'Concluido' in c or 'Fechamento' in c or 'Solução' in c), None)
-    
-    if col_data_abertura:
-        df['Data_Abertura_dt'] = pd.to_datetime(df[col_data_abertura], dayfirst=True, errors='coerce')
+    # Mapeamento da coluna de abertura e conclusao da planilha
+    col_abertura = next((c for c in df.columns if 'Carimbo' in c or 'Abertura' in c), None)
+    col_conclusao = next((c for c in df.columns if 'Data de conclusão' in c or 'conclusão' in c.lower()), None)
+
+    # Conversão das datas respeitando o formato brasileiro (dia primeiro)
+    if col_abertura:
+        df['Data_Abertura_dt'] = pd.to_datetime(df[col_abertura], dayfirst=True, errors='coerce')
     else:
         df['Data_Abertura_dt'] = pd.NaT
 
-    if col_data_conclusao and col_data_conclusao in df.columns:
-        df['Data_Conclusao_dt'] = pd.to_datetime(df[col_data_conclusao], dayfirst=True, errors='coerce')
+    if col_conclusao:
+        df['Data_Conclusao_dt'] = pd.to_datetime(df[col_conclusao], dayfirst=True, errors='coerce')
     else:
         df['Data_Conclusao_dt'] = pd.NaT
 
-    # Cálculo dinâmico do tempo de resolução (Horas de Aberto até Concluído)
-    def calcular_horas(row):
+    # Cálculo exato do tempo decorrido em horas
+    def calcular_tempo_resolucao(row):
+        status_str = str(row.get('Status', '')).lower()
         if pd.notnull(row['Data_Abertura_dt']) and pd.notnull(row['Data_Conclusao_dt']):
-            diff = (row['Data_Conclusao_dt'] - row['Data_Abertura_dt']).total_seconds() / 3600
-            if diff >= 0:
-                return f"{diff:.1f} hrs"
-        return "Em Aberto"
+            diff_segundos = (row['Data_Conclusao_dt'] - row['Data_Abertura_dt']).total_seconds()
+            if diff_segundos >= 0:
+                horas = diff_segundos / 3600
+                if horas < 24:
+                    return f"{horas:.1f}h"
+                else:
+                    dias = horas / 24
+                    return f"{dias:.1f} dias ({horas:.0f}h)"
+        
+        # Para chamados em aberto (Pendente ou Atuando), calcula o tempo decorrido ate o momento atual
+        if pd.notnull(row['Data_Abertura_dt']) and 'conclu' not in status_str:
+            tempo_aberto_horas = (pd.Timestamp.now() - row['Data_Abertura_dt']).total_seconds() / 3600
+            return f"{tempo_aberto_horas:.1f}h (Em aberto)"
+            
+        return "-"
 
-    df['Tempo de Atendimento'] = df.apply(calcular_horas, axis=1)
+    df['Tempo Decorrido'] = df.apply(calcular_tempo_resolucao, axis=1)
+    
+    # Formatação amigável das datas para exibição na tabela
+    df['Abertura Exibição'] = df['Data_Abertura_dt'].dt.strftime('%d/%m/%Y %H:%M').fillna('-')
+    df['Conclusão Exibição'] = df['Data_Conclusao_dt'].dt.strftime('%d/%m/%Y').fillna('-')
+    
     return df
 
 df = carregar_dados()
@@ -167,16 +184,17 @@ st.markdown("---")
 
 st.markdown("### 📋 Fila Operacional de Chamados")
 
-# Montagem das colunas com inclusão de Data de Conclusão e Tempo de Atendimento
-colunas_base = [col_chamado, 'Data_Abertura_dt', 'Data_Conclusao_dt', 'Tempo de Atendimento', col_setor, col_maquina, col_prioridade, 'Status_Padrao']
+# Montagem das colunas incluindo Data de Conclusao e Tempo Decorrido
+colunas_base = [col_chamado, 'Abertura Exibição', 'Conclusão Exibição', 'Tempo Decorrido', col_setor, col_maquina, col_prioridade, 'Status_Padrao']
 colunas_exibir = [c for c in colunas_base if c in df_filtrado.columns]
 
 df_tabela = df_filtrado[colunas_exibir].rename(columns={
     'Status_Padrao': 'Status Final', 
-    'Data_Abertura_dt': 'Data/Hora Abertura',
-    'Data_Conclusao_dt': 'Data Conclusão'
+    'Abertura Exibição': 'Data Abertura',
+    'Conclusão Exibição': 'Data Conclusão'
 })
 
+# Estilização por linha inteira
 def estilar_linha_inteira(row):
     status = row['Status Final']
     if status == 'Concluído':
