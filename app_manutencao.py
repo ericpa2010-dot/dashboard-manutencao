@@ -1,12 +1,17 @@
 ﻿import streamlit as st
 import pandas as pd
+from streamlit_autorefresh import st_autorefresh
 
 st.set_page_config(page_title="Painel de Manutenção", layout="wide")
+
+# Recarrega o painel automaticamente a cada 15 segundos
+st_autorefresh(interval=15000, key="datarefresh")
+
 st.title("Painel de Manutenção")
 
 URL_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRgqjurSWlFiWjsy3V2cpz9vju85d1-mGNB0wIucZm9Rx_Af0cweCNbXvlEIblD9TlY2bmiYVY5T4N0/pub?gid=1559301826&single=true&output=csv"
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=1)
 def carregar_dados():
     df = pd.read_csv(URL_CSV)
     df.columns = df.columns.str.strip()
@@ -95,9 +100,9 @@ c1, c2, c3 = st.columns(3)
 with c1:
     st.markdown(
         f"""
-        <div style="background-color:#FFF3CD; padding:15px; border-radius:8px; border-left: 6px solid #FFC107;">
-            <h4 style="color:#856404; margin:0;">🟠 PENDENTE</h4>
-            <h2 style="color:#856404; margin:0;">{qtd_pendente}</h2>
+        <div style="background-color:#FFE8CC; padding:15px; border-radius:8px; border-left: 6px solid #FD7E14;">
+            <h4 style="color:#D9480F; margin:0;">🟠 PENDENTE</h4>
+            <h2 style="color:#D9480F; margin:0;">{qtd_pendente}</h2>
         </div>
         """, 
         unsafe_allow_html=True
@@ -106,9 +111,9 @@ with c1:
 with c2:
     st.markdown(
         f"""
-        <div style="background-color:#CCE5FF; padding:15px; border-radius:8px; border-left: 6px solid #004085;">
-            <h4 style="color:#004085; margin:0;">🔵 ATUANDO</h4>
-            <h2 style="color:#004085; margin:0;">{qtd_atuando}</h2>
+        <div style="background-color:#F8D7DA; padding:15px; border-radius:8px; border-left: 6px solid #DC3545;">
+            <h4 style="color:#721C24; margin:0;">🔴 ATUANDO</h4>
+            <h2 style="color:#721C24; margin:0;">{qtd_atuando}</h2>
         </div>
         """, 
         unsafe_allow_html=True
@@ -153,19 +158,24 @@ st.markdown("### 📋 Fila Operacional de Chamados")
 
 colunas_exibir = [c for c in [col_chamado, 'Data_dt', col_setor, col_maquina, col_prioridade, 'Status_Padrao'] if c in df_filtrado.columns]
 
-def estilar_status(val):
-    if val == 'Concluído':
-        return 'background-color: #D4EDDA; color: #155724; font-weight: bold;'
-    elif val == 'Atuando':
-        return 'background-color: #CCE5FF; color: #004085; font-weight: bold;'
-    elif val == 'Pendente':
-        return 'background-color: #FFF3CD; color: #856404; font-weight: bold;'
-    return ''
-
 df_tabela = df_filtrado[colunas_exibir].rename(columns={'Status_Padrao': 'Status Final', 'Data_dt': 'Data/Hora'})
 
+# Aplica a cor na LINHA INTEIRA de acordo com o status
+def estilar_linha_inteira(row):
+    status = row['Status Final']
+    if status == 'Concluído':
+        # Verde suave para a linha inteira
+        return ['background-color: #D4EDDA; color: #155724; font-weight: bold;'] * len(row)
+    elif status == 'Atuando':
+        # Vermelho suave para a linha inteira
+        return ['background-color: #F8D7DA; color: #721C24; font-weight: bold;'] * len(row)
+    elif status == 'Pendente':
+        # Laranja suave para a linha inteira
+        return ['background-color: #FFE8CC; color: #D9480F; font-weight: bold;'] * len(row)
+    return [''] * len(row)
+
 st.dataframe(
-    df_tabela.style.map(estilar_status, subset=['Status Final']),
+    df_tabela.style.apply(estilar_linha_inteira, axis=1),
     use_container_width=True,
     hide_index=True
 )
