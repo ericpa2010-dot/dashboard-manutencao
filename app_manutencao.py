@@ -5,7 +5,7 @@ import streamlit.components.v1 as components
 
 st.set_page_config(page_title="Painel de Manutenção", layout="wide")
 
-# Recarrega a página automaticamente a cada 15 segundos sem dependência externa
+# Recarrega a página automaticamente a cada 15 segundos
 components.html(
     """
     <script>
@@ -24,16 +24,21 @@ URL_BASE = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRgqjurSWlFiWjsy3V2c
 
 @st.cache_data(ttl=0)
 def carregar_dados():
-    # Bypass no cache do Google Sheets adicionando o timestamp atual na requisicao
     url_dinamica = f"{URL_BASE}&_nocache={int(time.time())}"
     df = pd.read_csv(url_dinamica)
-    df.columns = df.columns.str.strip()
+    df.columns = df.columns.astype(str).str.strip()
     
-    # Mapeamento da coluna de abertura e conclusao da planilha
+    # Remove linhas totalmente vazias da planilha
+    df = df.dropna(how='all')
+    
     col_abertura = next((c for c in df.columns if 'Carimbo' in c or 'Abertura' in c), None)
-    col_conclusao = next((c for c in df.columns if 'Data de conclusão' in c or 'conclusão' in c.lower()), None)
+    col_conclusao = next((c for c in df.columns if 'conclusã' in c.lower() or 'conclusa' in c.lower()), None)
+    col_status_raw = next((c for c in df.columns if 'Status' in c or 'Situaç' in c or 'Situac' in c), None)
+    col_setor = next((c for c in df.columns if 'Setor' in c or 'Nome e Setor' in c), None)
+    col_maquina = next((c for c in df.columns if 'Máquina' in c or 'Equipamento' in c), None)
+    col_prioridade = next((c for c in df.columns if 'Prioridade' in c), None)
+    col_chamado = next((c for c in df.columns if 'N°' in c or 'Chamado' in c), df.columns[0])
 
-    # Conversão das datas respeitando o formato brasileiro (dia primeiro)
     if col_abertura:
         df['Data_Abertura_dt'] = pd.to_datetime(df[col_abertura], dayfirst=True, errors='coerce')
     else:
@@ -44,56 +49,48 @@ def carregar_dados():
     else:
         df['Data_Conclusao_dt'] = pd.NaT
 
-    # Cálculo exato do tempo decorrido em horas
-    def calcular_tempo_resolucao(row):
-        status_str = str(row.get('Status', '')).lower()
-        if pd.notnull(row['Data_Abertura_dt']) and pd.notnull(row['Data_Conclusao_dt']):
-            diff_segundos = (row['Data_Conclusao_dt'] - row['Data_Abertura_dt']).total_seconds()
-            if diff_segundos >= 0:
-                horas = diff_segundos / 3600
-                if horas < 24:
-                    return f"{horas:.1f}h"
-                else:
-                    dias = horas / 24
-                    return f"{dias:.1f} dias ({horas:.0f}h)"
-        
-        # Para chamados em aberto (Pendente ou Atuando), calcula o tempo decorrido ate o momento atual
-        if pd.notnull(row['Data_Abertura_dt']) and 'conclu' not in status_str:
-            tempo_aberto_horas = (pd.Timestamp.now() - row['Data_Abertura_dt']).total_seconds() / 3600
-            return f"{tempo_aberto_horas:.1f}h (Em aberto)"
-            
-        return "-"
+    def tratar_status(val):
+        val_clean = str(val).strip().lower()
+        if any(term in val_clean for term in ['conclu', 'finaliz', 'fechado', 'ok', 'pronto']):
+            return 'Concluído'
+        elif any(term in val_clean for term in ['atuando', 'andamento', 'em ', 'fazendo', 'reparo']):
+            return 'Atuando'
+        return 'Pendente'
 
-    df['Tempo Decorrido'] = df.apply(calcular_tempo_resolucao, axis=1)
-    
-    # Formatação amigável das datas para exibição na tabela
-    df['Abertura Exibição'] = df['Data_Abertura_dt'].dt.strftime('%d/%m/%Y %H:%M').fillna('-')
-    df['Conclusão Exibição'] = df['Data_Conclusao_dt'].dt.strftime('%d/%m/%Y').fillna('-')
+    if col_status_raw:
+        df['Status_Padrao'] = df[col_status_raw].apply(tratar_status)
+    else:
+        df['Status_Padrao'] = 'Pendente'
+
+    def calcular_tempo(row):
+        st_final = row['Status_Padrao']
+        dt_ab = row['Data_Abertura_dt']
+        dt_cx = row['Data_Conclusao_dt']
+
+        if st_final == 'Concluído':
+            if pd.notnull(dt_ab) and pd.notnull(dt_cx):
+                diff = (dt_cx - dt_ab).total_seconds() / 3600
+                if diff >= 0:
+                    return f"{diff:.1f}h" if diff < 24 else f"{diff/24:.1f}d ({diff:.0f}h)"
+            return "Concluído"
+        else:
+            if pd.notnull(dt_ab):
+                horas_aberto = (pd.Timestamp.now() - dt_ab).total_seconds() / 3600
+                return f"{horas_aberto:.1f}h em aberto"
+            return "Em aberto"
+
+    df['Tempo Decorrido'] = df.apply(calcular_tempo, axis=1)
+    df['Data Abertura'] = df['Data_Abertura_dt'].dt.strftime('%d/%m/%Y %H:%M').fillna('-')
+    df['Data Conclusão'] = df['Data_Conclusao_dt'].dt.strftime('%d/%m/%Y').fillna('-')
     
     return df
 
 df = carregar_dados()
 
-col_status = next((c for c in df.columns if 'Status' in c or 'Situacao' in c or 'Situação' in c), None)
 col_setor = next((c for c in df.columns if 'Setor' in c or 'Nome e Setor' in c), None)
 col_maquina = next((c for c in df.columns if 'Máquina' in c or 'Equipamento' in c), None)
 col_prioridade = next((c for c in df.columns if 'Prioridade' in c), None)
 col_chamado = next((c for c in df.columns if 'N°' in c or 'Chamado' in c), df.columns[0])
-
-if not col_status:
-    df['Status'] = 'Pendente'
-    col_status = 'Status'
-
-def normalizar_status(val):
-    val_str = str(val).lower()
-    if 'conclu' in val_str or 'finaliz' in val_str or 'fechado' in val_str:
-        return 'Concluído'
-    elif 'atuando' in val_str or 'andamento' in val_str or 'em ' in val_str:
-        return 'Atuando'
-    else:
-        return 'Pendente'
-
-df['Status_Padrao'] = df[col_status].apply(normalizar_status)
 
 st.sidebar.header("Filtros por Operação")
 
@@ -184,17 +181,11 @@ st.markdown("---")
 
 st.markdown("### 📋 Fila Operacional de Chamados")
 
-# Montagem das colunas incluindo Data de Conclusao e Tempo Decorrido
-colunas_base = [col_chamado, 'Abertura Exibição', 'Conclusão Exibição', 'Tempo Decorrido', col_setor, col_maquina, col_prioridade, 'Status_Padrao']
+colunas_base = [col_chamado, 'Data Abertura', 'Data Conclusão', 'Tempo Decorrido', col_setor, col_maquina, col_prioridade, 'Status_Padrao']
 colunas_exibir = [c for c in colunas_base if c in df_filtrado.columns]
 
-df_tabela = df_filtrado[colunas_exibir].rename(columns={
-    'Status_Padrao': 'Status Final', 
-    'Abertura Exibição': 'Data Abertura',
-    'Conclusão Exibição': 'Data Conclusão'
-})
+df_tabela = df_filtrado[colunas_exibir].rename(columns={'Status_Padrao': 'Status Final'})
 
-# Estilização por linha inteira
 def estilar_linha_inteira(row):
     status = row['Status Final']
     if status == 'Concluído':
