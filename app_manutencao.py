@@ -54,31 +54,29 @@ if menu == "Gestão Operacional":
 # --- MODULO 1: ABERTURA DE CHAMADO (PÚBLICO) ---
 if menu == "Abrir Chamado":
     st.title("📌 Abertura de Chamado de Manutenção")
-    st.caption("Campos marcados com * são de preenchimento obrigatório.")
     
     with st.form("form_abertura", clear_on_submit=True):
         col1, col2 = st.columns(2)
         with col1:
-            nome_setor = st.text_input("Nome e Setor Solicitante *", placeholder="Ex: Guilherme (Surfaçagem)")
-            email = st.text_input("E-mail para Notificação *", placeholder="Ex: guilherme@labfoco.com.br")
-            area = st.selectbox("Área do Chamado *", ["Surfaçagem", "AR", "Montagem", "Estoque", "Expedição", "Atendimento", "TI", "Diretoria", "Geral"])
-            equipamento = st.text_input("Equipamento / Sistema / Local *", placeholder="Ex: Satisloh SL-501")
+            nome_setor = st.text_input("Nome e Setor Solicitante", placeholder="Ex: Guilherme (Surfaçagem)")
+            email = st.text_input("E-mail para Notificação")
+            area = st.selectbox("Área do Chamado", ["Surfaçagem", "AR", "Montagem", "Estoque", "Expedição", "Atendimento", "TI", "Diretoria", "Geral"])
+            equipamento = st.text_input("Equipamento / Sistema / Local", placeholder="Ex: Satisloh SL-501")
         
         with col2:
-            impacto = st.selectbox("Impacto na Operação *", ["Parada total", "Parada parcial", "Sem impacto"])
-            prioridade = st.selectbox("Prioridade Sugerida *", ["Alta", "Média", "Baixa"])
-            tecnico_atribuido = st.selectbox("Técnico a Atribuir *", ["Eric", "Felipe"])
+            impacto = st.selectbox("Impacto na Operação", ["Parada total", "Parada parcial", "Sem impacto"])
+            prioridade = st.selectbox("Prioridade Sugerida", ["Alta", "Média", "Baixa"])
+            info_adicional = st.text_input("Link de Foto/Anexo (opcional)")
 
-        problema = st.text_input("Qual é o problema? *", placeholder="Resumo em uma frase")
-        observado = st.text_area("O que foi observado? *", placeholder="Detalhes do comportamento do equipamento")
-        testado = st.text_area("O que já foi feito/testado? (opcional)", placeholder="Ações iniciais tentadas antes do chamado")
+        problema = st.text_input("Qual é o problema?", placeholder="Resumo em uma frase")
+        observado = st.text_area("O que foi observado?", placeholder="Detalhes do comportamento do equipamento")
+        testado = st.text_area("O que já foi feito/testado?", placeholder="Ações iniciais tentadas antes do chamado")
 
         submitted = st.form_submit_button("Enviar Chamado")
 
         if submitted:
-            # Trava de validação para impedir campos em branco ou vazios
-            if not nome_setor.strip() or not email.strip() or not equipamento.strip() or not problema.strip() or not observado.strip():
-                st.error("⚠️ Por favor, preencha todos os campos obrigatórios (*) antes de enviar.")
+            if not nome_setor or not problema or not equipamento:
+                st.warning("Por favor, preencha os campos obrigatórios.")
             else:
                 fuso_br = pytz.timezone("America/Sao_Paulo")
                 agora = datetime.now(fuso_br).strftime("%Y-%m-%d %H:%M:%S")
@@ -96,15 +94,15 @@ if menu == "Abrir Chamado":
                     testado,              # O que já foi feito/testado?
                     impacto,              # Impacto na operação
                     prioridade,           # Prioridade
-                    "",                   # Informação adicional (Reservado)
+                    info_adicional,       # Informação adicional
                     "Pendente",           # Status inicial
-                    tecnico_atribuido,    # Técnico Responsável
+                    "",                   # Técnico Responsável
                     "",                   # Data de conclusão
                     ""                    # Observação Interna
                 ]
 
                 sheet.append_row(nova_linha)
-                st.success(f"Chamado Nº {proximo_num} registrado com sucesso para o técnico {tecnico_atribuido}!")
+                st.success(f"Chamado Nº {proximo_num} registrado com sucesso!")
                 st.cache_resource.clear()
 
 # --- MODULO 2: GESTÃO OPERACIONAL (RESTRITO) ---
