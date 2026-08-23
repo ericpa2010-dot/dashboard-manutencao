@@ -156,9 +156,9 @@ elif menu == "Gestão Operacional":
                 st.success(f"Chamado {num_chamado} atualizado para '{novo_status}'. A planilha formatará a linha e inserirá a data automaticamente.")
                 st.cache_resource.clear()
 
-# --- MODULO 3: DASHBOARD COMPLETO & SLA (PÚBLICO) ---
+# --- MODULO 3: DASHBOARD UNIFICADO & SLA (PÚBLICO) ---
 elif menu == "Dashboard & SLA":
-    st.title("📊 Painel Gerencial & Indicadores Avançados de SLA")
+    st.title("📊 Painel Gerencial & Indicadores de SLA")
     
     if df.empty:
         st.info("Nenhum dado registrado na planilha até o momento.")
@@ -167,7 +167,7 @@ elif menu == "Dashboard & SLA":
         df_calc["Carimbo de data/hora"] = pd.to_datetime(df_calc["Carimbo de data/hora"], errors="coerce")
         df_calc["Data de conclusão"] = pd.to_datetime(df_calc["Data de conclusão"], errors="coerce")
         
-        # Processamento de resolvidos e regras de SLA
+        # Processamento dos chamados concluídos e aplicação das metas de SLA
         df_concluidos = df_calc.dropna(subset=["Data de conclusão"]).copy()
         if not df_concluidos.empty:
             df_concluidos["Tempo_Resolucao_Horas"] = (
@@ -180,10 +180,10 @@ elif menu == "Dashboard & SLA":
                 if "alta" in p:
                     return 4.0
                 elif "média" in p or "media" in p:
-                    return 24.0
+                    return 8.0
                 elif "baixa" in p:
-                    return 48.0
-                return 24.0
+                    return 78.0
+                return 8.0
 
             df_concluidos["Meta_SLA_Horas"] = df_concluidos["Prioridade"].apply(get_sla_target)
             df_concluidos["SLA_Cumprido"] = df_concluidos["Tempo_Resolucao_Horas"] <= df_concluidos["Meta_SLA_Horas"]
@@ -199,73 +199,77 @@ elif menu == "Dashboard & SLA":
         taxa_conclusao = (total_concluidos / total_chamados * 100) if total_chamados > 0 else 0.0
         
         mttr_geral = df_concluidos["Tempo_Resolucao_Horas"].mean() if not df_concluidos.empty else 0.0
-        sla_cumprido_pct = (df_concluidos["SLA_Cumprido"].sum() / total_concluidos * 100) if total_concluidos > 0 else 0.0
+        
+        # Marco zero: se não houver estouros nas metas novas, a conformidade permanece em 100%
+        if not df_concluidos.empty and (df_concluidos["SLA_Cumprido"] == False).sum() > 0:
+            sla_cumprido_pct = (df_concluidos["SLA_Cumprido"].sum() / total_concluidos) * 100
+        else:
+            sla_cumprido_pct = 100.0
 
-        # Cards de Indicadores
+        # Cards de Indicadores Superiores
         c1, c2, c3, c4, c5 = st.columns(5)
         c1.metric("Total Chamados", total_chamados)
-        c2.metric("Em Aberto / Atuando", em_aberto)
-        c3.metric("Taxa de Resolução", f"{taxa_conclusao:.1f}%")
+        c2.metric("Em Aberto", em_aberto)
+        c3.metric("Taxa Resolução", f"{taxa_conclusao:.1f}%")
         c4.metric("MTTR Geral", f"{mttr_geral:.1f}h")
         c5.metric("Conformidade SLA", f"{sla_cumprido_pct:.1f}%")
 
+        # Banner com a temporalidade oficial do SLA
+        st.info("⏱️ **Prazos Oficiais de Atendimento (SLA):** **Alta:** até 4h | **Média:** de 6h a 8h | **Baixa:** de 24h a 78h")
+
         st.markdown("---")
 
-        # Visões analíticas por abas
-        aba1, aba2, aba3 = st.tabs(["📌 Volumetria & Gargalos", "👥 Desempenho Técnico", "🚨 Análise de SLA & Reincidência"])
+        # Visualização Contínua em Página Única
+        col_m1, col_m2 = st.columns(2)
+        with col_m1:
+            st.markdown("**Chamados por Setor / Área**")
+            if "Área do chamado" in df_calc.columns:
+                st.bar_chart(df_calc["Área do chamado"].value_counts())
 
-        with aba1:
-            col_a, col_b = st.columns(2)
-            with col_a:
-                st.subheader("Chamados por Setor / Área")
-                if "Área do chamado" in df_calc.columns:
-                    st.bar_chart(df_calc["Área do chamado"].value_counts())
-            
-            with col_b:
-                st.subheader("Distribuição por Prioridade")
-                if "Prioridade" in df_calc.columns:
-                    st.bar_chart(df_calc["Prioridade"].value_counts())
+        with col_m2:
+            st.markdown("**Distribuição por Nível de Prioridade**")
+            if "Prioridade" in df_calc.columns:
+                st.bar_chart(df_calc["Prioridade"].value_counts())
 
-            st.subheader("Evolução Temporal de Aberturas")
-            df_tempo = df_calc.dropna(subset=["Carimbo de data/hora"]).copy()
-            if not df_tempo.empty:
-                df_tempo["Data_Dia"] = df_tempo["Carimbo de data/hora"].dt.date
-                evolucao = df_tempo.groupby("Data_Dia").size()
-                st.line_chart(evolucao)
+        st.markdown("---")
 
-        with aba2:
-            st.subheader("Desempenho por Técnico Responsável")
+        col_m3, col_m4 = st.columns(2)
+        with col_m3:
+            st.markdown("**Top Equipamentos e Locais com Chamados**")
+            if "Equipamento/Sistema/Local" in df_calc.columns:
+                top_eq = df_calc["Equipamento/Sistema/Local"].value_counts().head(10)
+                st.bar_chart(top_eq)
+
+        with col_m4:
+            st.markdown("**Desempenho da Equipe Técnica**")
             if "Técnico Responsável" in df_calc.columns and not df_concluidos.empty:
                 tec_stats = df_concluidos.groupby("Técnico Responsável").agg(
-                    Total_Atendidos=("Nº Chamado", "count"),
-                    MTTR_Medio_Horas=("Tempo_Resolucao_Horas", "mean"),
-                    Percentual_SLA_OK=("SLA_Cumprido", lambda x: (x.sum() / len(x)) * 100)
+                    Atendidos=("Nº Chamado", "count"),
+                    MTTR_Horas=("Tempo_Resolucao_Horas", "mean"),
+                    SLA_OK_Pct=("SLA_Cumprido", lambda x: (x.sum() / len(x)) * 100)
                 ).reset_index()
-                tec_stats["MTTR_Medio_Horas"] = tec_stats["MTTR_Medio_Horas"].round(1)
-                tec_stats["Percentual_SLA_OK"] = tec_stats["Percentual_SLA_OK"].round(1)
+                tec_stats["MTTR_Horas"] = tec_stats["MTTR_Horas"].round(1)
+                tec_stats["SLA_OK_Pct"] = tec_stats["SLA_OK_Pct"].round(1)
                 st.dataframe(tec_stats, use_container_width=True)
             else:
-                st.info("Aguardando conclusão de chamados para gerar histórico do time técnico.")
+                st.caption("Aguardando finalização de chamados para consolidação de métricas por técnico.")
 
-        with aba3:
-            col_r1, col_r2 = st.columns(2)
-            with col_r1:
-                st.subheader("Top Equipamentos Reincidentes")
-                if "Equipamento/Sistema/Local" in df_calc.columns:
-                    top_eq = df_calc["Equipamento/Sistema/Local"].value_counts().head(10)
-                    st.bar_chart(top_eq)
-            
-            with col_r2:
-                st.subheader("Cumprimento do SLA")
-                if not df_concluidos.empty:
-                    sla_counts = df_concluidos["SLA_Cumprido"].map({True: "Dentro do SLA", False: "Fora do SLA (Estourado)"}).value_counts()
-                    st.bar_chart(sla_counts)
-            
-            st.subheader("Detalhamento de Chamados com SLA Estourado")
-            if not df_concluidos.empty:
-                fora_sla = df_concluidos[df_concluidos["SLA_Cumprido"] == False]
-                if not fora_sla.empty:
-                    colunas_sla = [c for c in ["Nº Chamado", "Área do chamado", "Equipamento/Sistema/Local", "Prioridade", "Tempo_Resolucao_Horas", "Meta_SLA_Horas", "Técnico Responsável"] if c in fora_sla.columns]
-                    st.dataframe(fora_sla[colunas_sla], use_container_width=True)
-                else:
-                    st.success("Operação eficiente: 100% dos chamados concluídos dentro da meta de SLA.")
+        st.markdown("---")
+
+        st.markdown("**Evolução Diária de Chamados Criados**")
+        df_tempo = df_calc.dropna(subset=["Carimbo de data/hora"]).copy()
+        if not df_tempo.empty:
+            df_tempo["Data_Dia"] = df_tempo["Carimbo de data/hora"].dt.date
+            evolucao = df_tempo.groupby("Data_Dia").size()
+            st.line_chart(evolucao)
+
+        st.markdown("---")
+
+        st.markdown("**Detalhamento de Chamados Fora da Meta de SLA**")
+        if not df_concluidos.empty:
+            fora_sla = df_concluidos[df_concluidos["SLA_Cumprido"] == False]
+            if not fora_sla.empty:
+                colunas_sla = [c for c in ["Nº Chamado", "Área do chamado", "Equipamento/Sistema/Local", "Prioridade", "Tempo_Resolucao_Horas", "Meta_SLA_Horas", "Técnico Responsável"] if c in fora_sla.columns]
+                st.dataframe(fora_sla[colunas_sla], use_container_width=True)
+            else:
+                st.success("Operação 100% em conformidade: todos os chamados finalizados respeitaram os prazos estipulados.")
