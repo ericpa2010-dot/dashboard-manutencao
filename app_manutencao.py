@@ -4,7 +4,7 @@ import streamlit as st
 
 st.set_page_config(page_title="Painel de Manutenção", layout="wide", initial_sidebar_state="expanded")
 
-# CSS Customizado - Dark Premium
+# CSS Customizado - Layout Dark com seções de alta performance
 st.markdown("""
 <style>
     .stApp {
@@ -88,12 +88,9 @@ SETORES_PADRAO = [
 ]
 
 PRIORIDADE_SLA_HORAS = {
-    "urgente": 2,
-    "alta": 2,
-    "medio": 6,
-    "media": 6,
-    "baixo": 24,
-    "baixa": 24,
+    "urgente": 2, "alta": 2,
+    "medio": 6, "media": 6,
+    "baixo": 24, "baixa": 24,
 }
 SLA_PADRAO_HORAS = 24
 LIMIAR_ATENCAO = 0.7
@@ -212,6 +209,9 @@ def carregar_dados() -> pd.DataFrame:
 
     agora = pd.Timestamp.now()
     df["Horas_em_aberto"] = (agora - df["Data_Abertura_dt"]).dt.total_seconds() / 3600.0
+    
+    # Horas reais de resolução para concluídos
+    df["Horas_Resolucao"] = (df["Data_Conclusao_dt"] - df["Data_Abertura_dt"]).dt.total_seconds() / 3600.0
     df["Tempo Decorrido"] = df["Horas_em_aberto"].apply(formatar_horas)
 
     urg = df.apply(classificar_urgencia, axis=1, result_type="expand")
@@ -282,6 +282,27 @@ def render_painel(setores, status):
     c4.metric("Total Filtrado", len(df))
 
     st.markdown("---")
+    
+    # NOVA SEÇÃO: INDICADORES DE PRODUTIVIDADE E PERFORMANCE
+    st.markdown("### ⚡ Indicadores de Produtividade da Equipe")
+    df_concluidos = df[df["Status_Final"] == "Concluído"]
+    
+    # Cálculo do Tempo Médio de Resolução (MTTR)
+    mttr = df_concluidos["Horas_Resolucao"].mean() if not df_concluidos.empty else 0
+    
+    # Taxa de Resolução no Prazo
+    if not df_concluidos.empty:
+        no_prazo = len(df_concluidos[df_concluidos["Horas_Resolucao"] <= df_concluidos["Prioridade"].map(lambda p: obter_sla_horas(p))])
+        taxa_sla = (no_prazo / len(df_concluidos)) * 100
+    else:
+        taxa_sla = 100.0
+
+    p1, p2, p3 = st.columns(3)
+    p1.metric("⏱️ Tempo Médio de Solução (MTTR)", f"{mttr:.1f} hrs" if mttr < 24 else f"{mttr/24:.1f} dias")
+    p2.metric("🎯 Taxa de SLA Cumprido", f"{taxa_sla:.1f}%")
+    p3.metric("✅ Total Resolvidos", len(df_concluidos))
+
+    st.markdown("---")
     st.markdown("### 🚦 Status da Fila")
     t1, t2, t3 = st.columns(3)
 
@@ -304,12 +325,9 @@ def render_painel(setores, status):
         card("CONCLUÍDOS", "🟢", (df["Status_Final"] == "Concluído").sum(), "#1E293B", "#10B981", "#10B981")
 
     st.markdown("---")
-    
-    # REESTRUTURAÇÃO COMPLETA DA SEÇÃO DE SLA POR PRIORIDADE
     st.markdown("### ⏱️ Monitoramento de SLA por Nível de Prioridade")
     
     df_aberto = df[df["Status_Final"] != "Concluído"]
-    
     col_alta, col_media, col_baixa = st.columns(3)
 
     def montar_bloco_prioridade(col, titulo, emoji, prioridade_termos, meta_texto, cor_borda):
@@ -336,6 +354,20 @@ def render_painel(setores, status):
     montar_bloco_prioridade(col_alta, "URGENTE / ALTA", "🚨", ["alta", "urgente"], "Resolver em até 2h", "#EF4444")
     montar_bloco_prioridade(col_media, "MÉDIA", "⚠️", ["media", "medio"], "Resolver em até 6h", "#F59E0B")
     montar_bloco_prioridade(col_baixa, "BAIXA", "🟢", ["baixa", "baixo"], "Resolver em até 24h", "#10B981")
+
+    st.markdown("---")
+    
+    # MAPEAMENTO DE GARGALOS
+    st.markdown("### ⚠️ Maiores Ofensores da Operação")
+    g1, g2 = st.columns(2)
+    with g1:
+        st.markdown("**Top Setores com Mais Demanda**")
+        top_s = df["Setor"].value_counts().head(5)
+        st.bar_chart(top_s)
+    with g2:
+        st.markdown("**Top Equipamentos / Problemas Recorrentes**")
+        top_m = df["Máquina"].value_counts().head(5)
+        st.bar_chart(top_m)
 
     st.markdown("---")
     st.markdown("### 📋 Fila Operacional Reordenada")
