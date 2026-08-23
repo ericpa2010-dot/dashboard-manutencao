@@ -1,16 +1,70 @@
-﻿"""
-Painel de Manutenção
----------------------
-pip install streamlit pandas
-streamlit run app_manutencao.py
-"""
-
-import unicodedata
-
+﻿import unicodedata
 import pandas as pd
 import streamlit as st
 
-st.set_page_config(page_title="Painel de Manutenção", layout="wide")
+st.set_page_config(page_title="Painel de Manutenção", layout="wide", initial_sidebar_state="expanded")
+
+# CSS Customizado - Tema Dark Premium
+st.markdown("""
+<style>
+    .stApp {
+        background-color: #0F172A;
+        color: #F8FAFC;
+    }
+    h1 {
+        color: #F8FAFC !important;
+        font-weight: 800 !important;
+        letter-spacing: -0.5px !important;
+        padding-bottom: 15px !important;
+    }
+    h3 {
+        color: #94A3B8 !important;
+        font-weight: 600 !important;
+        font-size: 1.1rem !important;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-top: 20px !important;
+    }
+    div[data-testid="stMetricValue"] {
+        font-size: 2.2rem !important;
+        font-weight: 800 !important;
+        color: #38BDF8 !important;
+    }
+    div[data-testid="stMetric"] {
+        background: #1E293B;
+        border: 1px solid #334155;
+        padding: 16px 20px;
+        border-radius: 12px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+    }
+    .card-status {
+        padding: 20px;
+        border-radius: 12px;
+        border-left: 6px solid;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
+    }
+    .card-status h4 {
+        margin: 0;
+        font-size: 0.9rem;
+        font-weight: 700;
+        letter-spacing: 1px;
+    }
+    .card-status h2 {
+        margin: 8px 0 0 0;
+        font-size: 2.5rem;
+        font-weight: 800;
+    }
+    .stDataFrame {
+        border: 1px solid #334155;
+        border-radius: 12px;
+        overflow: hidden;
+    }
+    section[data-testid="stSidebar"] {
+        background-color: #1E293B !important;
+        border-right: 1px solid #334155;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 URL_BASE = (
     "https://docs.google.com/spreadsheets/d/e/2PACX-1vRgqjurSWlFiWjsy3V2cpz9vju85"
@@ -18,7 +72,7 @@ URL_BASE = (
     "?gid=1559301826&single=true&output=csv"
 )
 
-INTERVALO_ATUALIZACAO_SEG = 60  # frequência do auto-refresh do fragment
+INTERVALO_ATUALIZACAO_SEG = 60
 
 SETORES_PADRAO = [
     "Manutenção", "Expedição", "Estoque", "Montagem",
@@ -26,25 +80,17 @@ SETORES_PADRAO = [
     "Diretoria", "TI", "Antireflexo",
 ]
 
-# =============================================================================
-# LÓGICA DE URGÊNCIA
-# =============================================================================
 PRIORIDADE_SLA_HORAS = {
     "urgente": 2,
     "medio": 6,
     "baixo": 24,
 }
 SLA_PADRAO_HORAS = 24
-
 LIMIAR_ATENCAO = 0.7
 
 SETORES_CRITICOS = {"Produção", "Montagem", "Expedição", "Antireflexo"}
 MAQUINAS_CRITICAS = {"FORNO 1", "LINHA 3", "MÁQUINA X"}
 
-
-# =============================================================================
-# UTILITÁRIOS
-# =============================================================================
 def normalizar_texto(valor: str) -> str:
     if not isinstance(valor, str):
         return ""
@@ -56,7 +102,6 @@ def normalizar_texto(valor: str) -> str:
         .lower()
     )
 
-
 def identificar_colunas(df: pd.DataFrame) -> dict:
     mapeamento = {
         "abertura": ["Carimbo", "Abertura"],
@@ -67,7 +112,6 @@ def identificar_colunas(df: pd.DataFrame) -> dict:
         "prioridade": ["Prioridade"],
         "chamado": ["N°", "Chamado", "N"],
     }
-
     colunas = {}
     avisos = []
     for chave, termos in mapeamento.items():
@@ -85,7 +129,6 @@ def identificar_colunas(df: pd.DataFrame) -> dict:
     colunas["_avisos"] = avisos
     return colunas
 
-
 def classificar_status(df: pd.DataFrame) -> pd.Series:
     tem_conclusao = pd.notnull(df["Data_Conclusao_dt"])
     status_norm = df["Status_Origem"].astype(str).map(normalizar_texto)
@@ -96,7 +139,6 @@ def classificar_status(df: pd.DataFrame) -> pd.Series:
     status_final = status_final.mask(tem_conclusao, "Concluído")
     return status_final
 
-
 def obter_multiplicador_critico(setor: str, maquina: str) -> int:
     crit_setores = {normalizar_texto(x) for x in SETORES_CRITICOS}
     crit_maquinas = {normalizar_texto(x) for x in MAQUINAS_CRITICAS}
@@ -104,45 +146,37 @@ def obter_multiplicador_critico(setor: str, maquina: str) -> int:
         return 2
     return 1
 
-
 def obter_sla_horas(prioridade: str) -> float:
     return PRIORIDADE_SLA_HORAS.get(normalizar_texto(prioridade), SLA_PADRAO_HORAS)
-
 
 def formatar_horas(h: float) -> str:
     if pd.isna(h):
         return "-"
     return f"{h:.1f}h" if h < 24 else f"{h / 24:.1f}d ({h:.0f}h)"
 
-
 def classificar_urgencia(row) -> tuple:
     status = row["Status_Final"]
     sla = obter_sla_horas(row["Prioridade"])
 
     if status == "Concluído":
-        return ("OK", "#D4EDDA", "#28A745", "#155724", sla)
+        return ("OK", "#1E293B", "#10B981", "#10B981", sla)
 
     mult = obter_multiplicador_critico(row["Setor"], row["Máquina"])
     sla_efetivo = sla / mult
     horas = row["Horas_em_aberto"]
 
     if horas > sla_efetivo:
-        return ("ESTOUROU SLA", "#F8D7DA", "#DC3545", "#721C24", sla)
+        return ("ESTOUROU SLA", "#451A03", "#EF4444", "#FCA5A5", sla)
     if horas > sla_efetivo * LIMIAR_ATENCAO:
-        return ("QUASE ESTOURANDO", "#FFF3CD", "#FFC107", "#856404", sla)
+        return ("QUASE ESTOURANDO", "#451A03", "#F59E0B", "#FCD34D", sla)
 
-    cor = ("#FFE8CC", "#FD7E14", "#D9480F") if status == "Pendente" else ("#F8D7DA", "#DC3545", "#721C24")
+    cor = ("#1E293B", "#F97316", "#FFEDD5") if status == "Pendente" else ("#1E293B", "#EF4444", "#FECACA")
     return ("DENTRO DO PRAZO", *cor, sla)
 
-
-# =============================================================================
-# CARREGAMENTO
-# =============================================================================
 @st.cache_data(ttl=INTERVALO_ATUALIZACAO_SEG, show_spinner=False)
 def carregar_dados() -> pd.DataFrame:
     df = pd.read_csv(URL_BASE)
     df.columns = df.columns.astype(str).str.strip()
-
     col = identificar_colunas(df)
 
     df["Data_Abertura_dt"] = (
@@ -163,7 +197,6 @@ def carregar_dados() -> pd.DataFrame:
     df["Chamado"] = df[col["chamado"]]
 
     df["Status_Final"] = classificar_status(df)
-
     df["Data Abertura"] = df["Data_Abertura_dt"].dt.strftime("%d/%m/%Y %H:%M")
     df["Data Conclusão"] = df["Data_Conclusao_dt"].dt.strftime("%d/%m/%Y").fillna("-")
 
@@ -181,52 +214,39 @@ def carregar_dados() -> pd.DataFrame:
     df.attrs["avisos_colunas"] = col["_avisos"]
     return df
 
-
-# =============================================================================
-# UI
-# =============================================================================
 def montar_estilizador(df_com_cores: pd.DataFrame):
     def _style(row):
         info = df_com_cores.loc[row.name]
         estilo = (
             f"background-color: {info['Urgencia_Fundo']}; "
             f"color: {info['Urgencia_Texto']}; "
-            f"font-weight: bold; "
-            f"border-left: 6px solid {info['Urgencia_Borda']};"
+            f"font-weight: 600; "
+            f"border-left: 4px solid {info['Urgencia_Borda']};"
         )
         return [estilo] * len(row)
     return _style
-
 
 def filtrar_por_setor(df: pd.DataFrame, setores: list) -> pd.DataFrame:
     if not setores:
         return df
     return df[df["Setor"].isin(setores)]
 
-
-st.title("Painel de Manutenção")
+st.title("🛠️ Painel de Controle da Manutenção")
 
 df_inicial = carregar_dados()
-avisos = df_inicial.attrs.get("avisos_colunas", [])
-if avisos:
-    st.warning(
-        "Não encontrei coluna correspondente para: " + ", ".join(avisos)
-        + ". Confira os cabeçalhos da planilha."
-    )
-
 setores_presentes = df_inicial["Setor"].dropna().unique().tolist()
 setores_finais = sorted(set(SETORES_PADRAO + setores_presentes))
 
 with st.sidebar:
-    st.header("Filtros")
-    setor_selecionado = st.multiselect("Setores", options=setores_finais, default=setores_finais)
+    st.header("⚙️ Filtros Operacionais")
+    setor_selecionado = st.multiselect("Setores da Empresa", options=setores_finais, default=setores_finais)
     status_selecionado = st.multiselect(
-        "Status",
+        "Status do Chamado",
         options=["Pendente", "Atuando", "Concluído"],
         default=["Pendente", "Atuando", "Concluído"],
     )
-    st.caption(f"🔄 Atualiza a cada {INTERVALO_ATUALIZACAO_SEG}s")
-
+    st.markdown("---")
+    st.caption(f"🔄 Auto-refresh ativo: {INTERVALO_ATUALIZACAO_SEG}s")
 
 @st.fragment(run_every=INTERVALO_ATUALIZACAO_SEG)
 def render_painel(setores, status):
@@ -244,44 +264,44 @@ def render_painel(setores, status):
         & (df_validas["Data_Abertura_dt"].dt.year == agora.year)
     ])
 
-    st.markdown("### 📈 Métricas")
+    st.markdown("### 📊 Volumetria de Atendimento")
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Chamados Hoje", hoje)
     c2.metric("Nesta Semana", semana)
     c3.metric("Neste Mês", mes)
-    c4.metric("Total no Filtro", len(df))
+    c4.metric("Total Filtrado", len(df))
 
     st.markdown("---")
-    st.markdown("### 🚦 Fila por Status")
+    st.markdown("### 🚦 Status da Fila")
     t1, t2, t3 = st.columns(3)
 
     def card(titulo, emoji, qtd, fundo, borda, texto):
         st.markdown(
             f"""
-            <div style="background-color:{fundo}; padding:15px; border-radius:8px; border-left: 6px solid {borda};">
-                <h4 style="color:{texto}; margin:0;">{emoji} {titulo}</h4>
-                <h2 style="color:{texto}; margin:0;">{qtd}</h2>
+            <div class="card-status" style="background-color:{fundo}; border-color:{borda};">
+                <h4 style="color:{texto};">{emoji} {titulo}</h4>
+                <h2 style="color:{texto};">{qtd}</h2>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
     with t1:
-        card("PENDENTE", "🟠", (df["Status_Final"] == "Pendente").sum(), "#FFE8CC", "#FD7E14", "#D9480F")
+        card("PENDENTES", "🟠", (df["Status_Final"] == "Pendente").sum(), "#1E293B", "#F97316", "#F97316")
     with t2:
-        card("ATUANDO", "🔴", (df["Status_Final"] == "Atuando").sum(), "#F8D7DA", "#DC3545", "#721C24")
+        card("EM ATUAÇÃO", "🔴", (df["Status_Final"] == "Atuando").sum(), "#1E293B", "#EF4444", "#EF4444")
     with t3:
-        card("CONCLUÍDO", "🟢", (df["Status_Final"] == "Concluído").sum(), "#D4EDDA", "#28A745", "#155724")
+        card("CONCLUÍDOS", "🟢", (df["Status_Final"] == "Concluído").sum(), "#1E293B", "#10B981", "#10B981")
 
     st.markdown("---")
-    st.markdown("### ⚠️ Alertas (SLA por prioridade: Urgente 2h · Médio 6h · Baixo 24h)")
+    st.markdown("### ⏱️ Monitoramento de SLA (Urgente: 2h | Médio: 6h | Baixo: 24h)")
     a1, a2, a3 = st.columns(3)
-    a1.metric("🔴 Estourou o SLA", (df["Urgência"] == "ESTOUROU SLA").sum())
-    a2.metric("🟡 Quase estourando", (df["Urgência"] == "QUASE ESTOURANDO").sum())
-    a3.metric("🟢 Dentro do prazo", (df["Urgência"] == "DENTRO DO PRAZO").sum())
+    a1.metric("🚨 Estourou o SLA", (df["Urgência"] == "ESTOUROU SLA").sum())
+    a2.metric("⚠️ Quase Estourando", (df["Urgência"] == "QUASE ESTOURANDO").sum())
+    a3.metric("✅ Dentro do Prazo", (df["Urgência"] == "DENTRO DO PRAZO").sum())
 
     st.markdown("---")
-    st.markdown("### 📋 Fila Operacional")
+    st.markdown("### 📋 Fila Operacional Reordenada")
 
     colunas_exibir = [
         "Chamado", "Setor", "Máquina", "Prioridade",
@@ -301,7 +321,6 @@ def render_painel(setores, status):
         hide_index=True,
     )
 
-    st.caption(f"Última atualização: {pd.Timestamp.now().strftime('%d/%m/%Y %H:%M:%S')}")
-
+    st.caption(f"Última sincronização: {pd.Timestamp.now().strftime('%d/%m/%Y %H:%M:%S')}")
 
 render_painel(setor_selecionado, status_selecionado)
