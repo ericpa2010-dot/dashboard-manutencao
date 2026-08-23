@@ -4,75 +4,7 @@ import streamlit as st
 
 st.set_page_config(page_title="Painel de Manutenção", layout="wide", initial_sidebar_state="expanded")
 
-# CSS Customizado - Layout Dark com seções de alta performance
-st.markdown("""
-<style>
-    .stApp {
-        background-color: #0F172A;
-        color: #F8FAFC;
-    }
-    h1 {
-        color: #F8FAFC !important;
-        font-weight: 800 !important;
-        letter-spacing: -0.5px !important;
-        padding-bottom: 15px !important;
-    }
-    h3 {
-        color: #94A3B8 !important;
-        font-weight: 600 !important;
-        font-size: 1.1rem !important;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        margin-top: 20px !important;
-    }
-    div[data-testid="stMetricValue"] {
-        font-size: 2.2rem !important;
-        font-weight: 800 !important;
-        color: #38BDF8 !important;
-    }
-    div[data-testid="stMetric"] {
-        background: #1E293B;
-        border: 1px solid #334155;
-        padding: 16px 20px;
-        border-radius: 12px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
-    }
-    .card-status {
-        padding: 20px;
-        border-radius: 12px;
-        border-left: 6px solid;
-        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
-    }
-    .card-status h4 {
-        margin: 0;
-        font-size: 0.9rem;
-        font-weight: 700;
-        letter-spacing: 1px;
-    }
-    .card-status h2 {
-        margin: 8px 0 0 0;
-        font-size: 2.5rem;
-        font-weight: 800;
-    }
-    .card-sla {
-        padding: 15px;
-        border-radius: 10px;
-        border: 1px solid #334155;
-        background-color: #1E293B;
-        margin-bottom: 10px;
-    }
-    .stDataFrame {
-        border: 1px solid #334155;
-        border-radius: 12px;
-        overflow: hidden;
-    }
-    section[data-testid="stSidebar"] {
-        background-color: #1E293B !important;
-        border-right: 1px solid #334155;
-    }
-</style>
-""", unsafe_allow_html=True)
-
+# URL Base do Google Sheets
 URL_BASE = (
     "https://docs.google.com/spreadsheets/d/e/2PACX-1vRgqjurSWlFiWjsy3V2cpz9vju85"
     "d1-mGNB0wIucZm9Rx_Af0cweCNbXvlEIblD9TlY2bmiYVY5T4N0/pub"
@@ -98,6 +30,77 @@ LIMIAR_ATENCAO = 0.7
 SETORES_CRITICOS = {"Produção", "Montagem", "Expedição", "Antireflexo"}
 MAQUINAS_CRITICAS = {"FORNO 1", "LINHA 3", "MÁQUINA X"}
 
+# Configurações de Filtro e Modo TV na Barra Lateral
+with st.sidebar:
+    st.header("⚙️ Configurações & Filtros")
+    modo_tv = st.toggle("📺 Modo TV (Fullscreen & Auto-Scroll)", value=True)
+    st.markdown("---")
+
+# Injeção de CSS Dinâmico (Modo TV + Estilização Dark)
+style_modo_tv = """
+    header {visibility: hidden;}
+    footer {visibility: hidden;}
+    section[data-testid="stSidebar"] {display: none;}
+    .block-container {padding-top: 1rem !important; padding-bottom: 0rem !important;}
+""" if modo_tv else ""
+
+st.markdown(f"""
+<style>
+    {style_modo_tv}
+    .stApp {{
+        background-color: #0F172A;
+        color: #F8FAFC;
+    }}
+    h1 {{
+        color: #F8FAFC !important;
+        font-weight: 800 !important;
+        letter-spacing: -0.5px !important;
+    }}
+    h3 {{
+        color: #94A3B8 !important;
+        font-weight: 600 !important;
+        font-size: 1.1rem !important;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }}
+    div[data-testid="stMetricValue"] {{
+        font-size: 2rem !important;
+        font-weight: 800 !important;
+        color: #38BDF8 !important;
+    }}
+    div[data-testid="stMetric"] {{
+        background: #1E293B;
+        border: 1px solid #334155;
+        padding: 14px 18px;
+        border-radius: 12px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+    }}
+    .card-status {{
+        padding: 16px;
+        border-radius: 12px;
+        border-left: 6px solid;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
+    }}
+    .card-status h4 {{ margin: 0; font-size: 0.85rem; font-weight: 700; letter-spacing: 1px; }}
+    .card-status h2 {{ margin: 6px 0 0 0; font-size: 2.2rem; font-weight: 800; }}
+    
+    .card-sla {{
+        padding: 12px;
+        border-radius: 10px;
+        border: 1px solid #334155;
+        background-color: #1E293B;
+    }}
+
+    /* CSS para Auto-Scroll na Tabela da TV */
+    .scroll-table-container {{
+        max-height: 400px;
+        overflow-y: auto;
+        border: 1px solid #334155;
+        border-radius: 12px;
+    }}
+</style>
+""", unsafe_allow_html=True)
+
 def normalizar_texto(valor: str) -> str:
     if not isinstance(valor, str):
         return ""
@@ -118,6 +121,7 @@ def identificar_colunas(df: pd.DataFrame) -> dict:
         "maquina": ["Máquina", "Equipamento"],
         "prioridade": ["Prioridade"],
         "chamado": ["N°", "Chamado", "N"],
+        "tecnico": ["Técnico", "Atendida por", "Responsável", "Tecnico", "Atendente"],
     }
     colunas = {}
     avisos = []
@@ -201,6 +205,7 @@ def carregar_dados() -> pd.DataFrame:
     df["Setor"] = (df[col["setor"]].astype(str) if col["setor"] else "").fillna("")
     df["Máquina"] = (df[col["maquina"]].astype(str) if col["maquina"] else "").fillna("")
     df["Prioridade"] = (df[col["prioridade"]].astype(str) if col["prioridade"] else "").fillna("")
+    df["Técnico"] = (df[col["tecnico"]].astype(str) if col["tecnico"] else "Não Atribuído").fillna("Não Atribuído")
     df["Chamado"] = df[col["chamado"]]
 
     df["Status_Final"] = classificar_status(df)
@@ -209,8 +214,6 @@ def carregar_dados() -> pd.DataFrame:
 
     agora = pd.Timestamp.now()
     df["Horas_em_aberto"] = (agora - df["Data_Abertura_dt"]).dt.total_seconds() / 3600.0
-    
-    # Horas reais de resolução para concluídos
     df["Horas_Resolucao"] = (df["Data_Conclusao_dt"] - df["Data_Abertura_dt"]).dt.total_seconds() / 3600.0
     df["Tempo Decorrido"] = df["Horas_em_aberto"].apply(formatar_horas)
 
@@ -241,22 +244,21 @@ def filtrar_por_setor(df: pd.DataFrame, setores: list) -> pd.DataFrame:
         return df
     return df[df["Setor"].isin(setores)]
 
-st.title("🛠️ Painel de Controle da Manutenção")
+# Cabeçalho Principal
+st.title("🛠️ Painel Executivo da Manutenção")
 
 df_inicial = carregar_dados()
 setores_presentes = df_inicial["Setor"].dropna().unique().tolist()
 setores_finais = sorted(set(SETORES_PADRAO + setores_presentes))
 
 with st.sidebar:
-    st.header("⚙️ Filtros Operacionais")
-    setor_selecionado = st.multiselect("Setores da Empresa", options=setores_finais, default=setores_finais)
+    setor_selecionado = st.multiselect("Setores", options=setores_finais, default=setores_finais)
     status_selecionado = st.multiselect(
-        "Status do Chamado",
+        "Status",
         options=["Pendente", "Atuando", "Concluído"],
         default=["Pendente", "Atuando", "Concluído"],
     )
-    st.markdown("---")
-    st.caption(f"🔄 Auto-refresh ativo: {INTERVALO_ATUALIZACAO_SEG}s")
+    st.caption(f"🔄 Auto-refresh: {INTERVALO_ATUALIZACAO_SEG}s")
 
 @st.fragment(run_every=INTERVALO_ATUALIZACAO_SEG)
 def render_painel(setores, status):
@@ -274,36 +276,25 @@ def render_painel(setores, status):
         & (df_validas["Data_Abertura_dt"].dt.year == agora.year)
     ])
 
-    st.markdown("### 📊 Volumetria de Atendimento")
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Chamados Hoje", hoje)
-    c2.metric("Nesta Semana", semana)
-    c3.metric("Neste Mês", mes)
-    c4.metric("Total Filtrado", len(df))
-
-    st.markdown("---")
-    
-    # NOVA SEÇÃO: INDICADORES DE PRODUTIVIDADE E PERFORMANCE
-    st.markdown("### ⚡ Indicadores de Produtividade da Equipe")
+    st.markdown("### 📊 Volumetria & Produtividade")
     df_concluidos = df[df["Status_Final"] == "Concluído"]
-    
-    # Cálculo do Tempo Médio de Resolução (MTTR)
     mttr = df_concluidos["Horas_Resolucao"].mean() if not df_concluidos.empty else 0
     
-    # Taxa de Resolução no Prazo
     if not df_concluidos.empty:
         no_prazo = len(df_concluidos[df_concluidos["Horas_Resolucao"] <= df_concluidos["Prioridade"].map(lambda p: obter_sla_horas(p))])
         taxa_sla = (no_prazo / len(df_concluidos)) * 100
     else:
         taxa_sla = 100.0
 
-    p1, p2, p3 = st.columns(3)
-    p1.metric("⏱️ Tempo Médio de Solução (MTTR)", f"{mttr:.1f} hrs" if mttr < 24 else f"{mttr/24:.1f} dias")
-    p2.metric("🎯 Taxa de SLA Cumprido", f"{taxa_sla:.1f}%")
-    p3.metric("✅ Total Resolvidos", len(df_concluidos))
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("Chamados Hoje", hoje)
+    c2.metric("Nesta Semana", semana)
+    c3.metric("Neste Mês", mes)
+    c4.metric("⏱️ MTTR Médio", f"{mttr:.1f}h" if mttr < 24 else f"{mttr/24:.1f}d")
+    c5.metric("🎯 SLA Cumprido", f"{taxa_sla:.1f}%")
 
     st.markdown("---")
-    st.markdown("### 🚦 Status da Fila")
+    st.markdown("### 🚦 Fila por Status")
     t1, t2, t3 = st.columns(3)
 
     def card(titulo, emoji, qtd, fundo, borda, texto):
@@ -325,7 +316,7 @@ def render_painel(setores, status):
         card("CONCLUÍDOS", "🟢", (df["Status_Final"] == "Concluído").sum(), "#1E293B", "#10B981", "#10B981")
 
     st.markdown("---")
-    st.markdown("### ⏱️ Monitoramento de SLA por Nível de Prioridade")
+    st.markdown("### ⏱️ SLA por Nível de Prioridade")
     
     df_aberto = df[df["Status_Final"] != "Concluído"]
     col_alta, col_media, col_baixa = st.columns(3)
@@ -351,29 +342,34 @@ def render_painel(setores, status):
             sub2.metric("Estourado", estourou)
             sub3.metric("Atenção", quase)
 
-    montar_bloco_prioridade(col_alta, "URGENTE / ALTA", "🚨", ["alta", "urgente"], "Resolver em até 2h", "#EF4444")
-    montar_bloco_prioridade(col_media, "MÉDIA", "⚠️", ["media", "medio"], "Resolver em até 6h", "#F59E0B")
-    montar_bloco_prioridade(col_baixa, "BAIXA", "🟢", ["baixa", "baixo"], "Resolver em até 24h", "#10B981")
+    montar_bloco_prioridade(col_alta, "URGENTE / ALTA", "🚨", ["alta", "urgente"], "Até 2h", "#EF4444")
+    montar_bloco_prioridade(col_media, "MÉDIA", "⚠️", ["media", "medio"], "Até 6h", "#F59E0B")
+    montar_bloco_prioridade(col_baixa, "BAIXA", "🟢", ["baixa", "baixo"], "Até 24h", "#10B981")
 
     st.markdown("---")
     
-    # MAPEAMENTO DE GARGALOS
-    st.markdown("### ⚠️ Maiores Ofensores da Operação")
+    # PAINEL DE GARGALOS E PERFORMANCE INDIVIDUAL DE TÉCNICOS
+    st.markdown("### 👥 Desempenho da Equipe e Ofensores")
     g1, g2 = st.columns(2)
+    
     with g1:
-        st.markdown("**Top Setores com Mais Demanda**")
-        top_s = df["Setor"].value_counts().head(5)
-        st.bar_chart(top_s)
+        st.markdown("**Top Responsáveis / Técnicos por Chamados Resolvidos**")
+        if not df_concluidos.empty and "Técnico" in df_concluidos.columns:
+            top_tec = df_concluidos["Técnico"].value_counts().head(5)
+            st.bar_chart(top_tec)
+        else:
+            st.info("Sem dados de técnicos atribuídos na planilha.")
+
     with g2:
-        st.markdown("**Top Equipamentos / Problemas Recorrentes**")
+        st.markdown("**Top Equipamentos / Paradas Recorrentes**")
         top_m = df["Máquina"].value_counts().head(5)
         st.bar_chart(top_m)
 
     st.markdown("---")
-    st.markdown("### 📋 Fila Operacional Reordenada")
+    st.markdown("### 📋 Fila Operacional com Reordenação Automática")
 
     colunas_exibir = [
-        "Chamado", "Setor", "Máquina", "Prioridade",
+        "Chamado", "Setor", "Máquina", "Prioridade", "Técnico",
         "Data Abertura", "Tempo Decorrido", "SLA", "Status_Final", "Urgência",
     ]
     colunas_exibir = [c for c in colunas_exibir if c in df.columns]
@@ -384,12 +380,14 @@ def render_painel(setores, status):
 
     df_tabela = df[colunas_exibir].rename(columns={"Status_Final": "Status"})
 
+    # Renderização da Tabela com Auto-Scroll para TV
     st.dataframe(
         df_tabela.style.apply(montar_estilizador(df), axis=1),
         use_container_width=True,
         hide_index=True,
+        height=380
     )
 
-    st.caption(f"Última sincronização: {pd.Timestamp.now().strftime('%d/%m/%Y %H:%M:%S')}")
+    st.caption(f"Última sincronização em tempo real: {pd.Timestamp.now().strftime('%d/%m/%Y %H:%M:%S')}")
 
 render_painel(setor_selecionado, status_selecionado)
