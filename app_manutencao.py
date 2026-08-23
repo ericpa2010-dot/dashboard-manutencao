@@ -4,7 +4,7 @@ import streamlit as st
 
 st.set_page_config(page_title="Painel de Manutenção", layout="wide", initial_sidebar_state="expanded")
 
-# CSS Customizado - Tema Dark Premium
+# CSS Customizado - Dark Premium
 st.markdown("""
 <style>
     .stApp {
@@ -54,6 +54,13 @@ st.markdown("""
         font-size: 2.5rem;
         font-weight: 800;
     }
+    .card-sla {
+        padding: 15px;
+        border-radius: 10px;
+        border: 1px solid #334155;
+        background-color: #1E293B;
+        margin-bottom: 10px;
+    }
     .stDataFrame {
         border: 1px solid #334155;
         border-radius: 12px;
@@ -82,8 +89,11 @@ SETORES_PADRAO = [
 
 PRIORIDADE_SLA_HORAS = {
     "urgente": 2,
+    "alta": 2,
     "medio": 6,
+    "media": 6,
     "baixo": 24,
+    "baixa": 24,
 }
 SLA_PADRAO_HORAS = 24
 LIMIAR_ATENCAO = 0.7
@@ -294,11 +304,38 @@ def render_painel(setores, status):
         card("CONCLUÍDOS", "🟢", (df["Status_Final"] == "Concluído").sum(), "#1E293B", "#10B981", "#10B981")
 
     st.markdown("---")
-    st.markdown("### ⏱️ Monitoramento de SLA (Urgente: 2h | Médio: 6h | Baixo: 24h)")
-    a1, a2, a3 = st.columns(3)
-    a1.metric("🚨 Estourou o SLA", (df["Urgência"] == "ESTOUROU SLA").sum())
-    a2.metric("⚠️ Quase Estourando", (df["Urgência"] == "QUASE ESTOURANDO").sum())
-    a3.metric("✅ Dentro do Prazo", (df["Urgência"] == "DENTRO DO PRAZO").sum())
+    
+    # REESTRUTURAÇÃO COMPLETA DA SEÇÃO DE SLA POR PRIORIDADE
+    st.markdown("### ⏱️ Monitoramento de SLA por Nível de Prioridade")
+    
+    df_aberto = df[df["Status_Final"] != "Concluído"]
+    
+    col_alta, col_media, col_baixa = st.columns(3)
+
+    def montar_bloco_prioridade(col, titulo, emoji, prioridade_termos, meta_texto, cor_borda):
+        df_p = df_aberto[df_aberto["Prioridade"].astype(str).str.lower().isin(prioridade_termos)]
+        total = len(df_p)
+        estourou = len(df_p[df_p["Urgência"] == "ESTOUROU SLA"])
+        quase = len(df_p[df_p["Urgência"] == "QUASE ESTOURANDO"])
+        
+        with col:
+            st.markdown(
+                f"""
+                <div class="card-sla" style="border-top: 4px solid {cor_borda};">
+                    <h4 style="margin:0; color:#F8FAFC;">{emoji} {titulo}</h4>
+                    <p style="margin:2px 0 10px 0; color:#94A3B8; font-size:0.8rem;"><b>Meta SLA:</b> {meta_texto}</p>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+            sub1, sub2, sub3 = st.columns(3)
+            sub1.metric("Em Fila", total)
+            sub2.metric("Estourado", estourou)
+            sub3.metric("Atenção", quase)
+
+    montar_bloco_prioridade(col_alta, "URGENTE / ALTA", "🚨", ["alta", "urgente"], "Resolver em até 2h", "#EF4444")
+    montar_bloco_prioridade(col_media, "MÉDIA", "⚠️", ["media", "medio"], "Resolver em até 6h", "#F59E0B")
+    montar_bloco_prioridade(col_baixa, "BAIXA", "🟢", ["baixa", "baixo"], "Resolver em até 24h", "#10B981")
 
     st.markdown("---")
     st.markdown("### 📋 Fila Operacional Reordenada")
