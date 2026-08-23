@@ -17,7 +17,6 @@ def get_gspread_client():
     ]
     creds_dict = dict(st.secrets["gcp_service_account"])
     
-    # Tratamento para chave privada com quebra de linha mal formatada
     if "private_key" in creds_dict:
         creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
         
@@ -41,7 +40,18 @@ except Exception as e:
 st.sidebar.title("Sistema de Manutenção")
 menu = st.sidebar.radio("Navegação", ["Abrir Chamado", "Gestão Operacional", "Dashboard & SLA"])
 
-# --- MODULO 1: ABERTURA DE CHAMADO ---
+# Trava de Segurança para Módulos Restritos
+SENHA_CORRETA = st.secrets.get("SENHA_GESTAO", "manutencao123")
+
+if menu in ["Gestão Operacional", "Dashboard & SLA"]:
+    st.sidebar.markdown("---")
+    senha_digitada = st.sidebar.text_input("Chave de Acesso Operacional", type="password")
+    
+    if senha_digitada != SENHA_CORRETA:
+        st.warning("🔒 Área restrita à equipe de manutenção. Insira a chave de acesso na barra lateral para continuar.")
+        st.stop()
+
+# --- MODULO 1: ABERTURA DE CHAMADO (PÚBLICO) ---
 if menu == "Abrir Chamado":
     st.title("📌 Abertura de Chamado de Manutenção")
     
@@ -95,7 +105,7 @@ if menu == "Abrir Chamado":
                 st.success(f"Chamado Nº {proximo_num} registrado com sucesso!")
                 st.cache_resource.clear()
 
-# --- MODULO 2: GESTÃO OPERACIONAL ---
+# --- MODULO 2: GESTÃO OPERACIONAL (RESTRITO) ---
 elif menu == "Gestão Operacional":
     st.title("⚙️ Gestão Operacional de Chamados")
     
@@ -146,7 +156,7 @@ elif menu == "Gestão Operacional":
                 st.success(f"Chamado {num_chamado} atualizado para '{novo_status}'. A planilha formatará a linha e inserirá a data automaticamente.")
                 st.cache_resource.clear()
 
-# --- MODULO 3: DASHBOARD & SLA ---
+# --- MODULO 3: DASHBOARD & SLA (RESTRITO) ---
 elif menu == "Dashboard & SLA":
     st.title("📊 Painel Gerencial & Indicadores SLA")
     
