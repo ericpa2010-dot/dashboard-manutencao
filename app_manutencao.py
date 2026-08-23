@@ -39,7 +39,7 @@ SETORES_PADRAO = [
 # Palavras-chave usadas para reconhecer o status de um chamado a partir do
 # texto livre da planilha. Se um chamado ficar "preso" incorretamente em
 # Pendente/Atuando, o motivo mais comum é o texto do status não bater com
-# nenhuma dessas palavras — use o painel de depuração no final da página
+# nenhuma dessas palavras - use o painel de depuração no final da página
 # para conferir o texto exato que está vindo da planilha.
 PALAVRAS_CONCLUIDO = [
     "conclu", "finaliz", "fechado", "ok", "pronto",
@@ -196,7 +196,7 @@ def estilar_linha_inteira(row):
 
 
 # =============================================================================
-# BLOCO DE DADOS — atualiza sozinho a cada N segundos, sem recarregar a página
+# BLOCO DE DADOS - atualiza sozinho a cada N segundos, sem recarregar a página
 # (por isso os filtros escolhidos na sidebar NÃO são perdidos).
 # Requer Streamlit >= 1.33 (recurso st.fragment).
 # =============================================================================
@@ -255,7 +255,7 @@ def painel_de_dados(setor_selecionado, status_selecionado):
     )
 
     # --- Painel de depuração: ajuda a achar chamado "preso" em Pendente ---
-    with st.expander("🔍 Depuração — ver texto bruto do status de cada chamado"):
+    with st.expander("🔍 Depuração - ver texto bruto do status de cada chamado"):
         colunas_debug = [c for c in [col["chamado"], col["status"], "Status_Padrao", "Data Conclusão"] if c and c in df_filtrado.columns]
         st.dataframe(df_filtrado[colunas_debug], use_container_width=True, hide_index=True)
 
