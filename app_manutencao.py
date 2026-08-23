@@ -40,10 +40,10 @@ except Exception as e:
 st.sidebar.title("Sistema de Manutenção")
 menu = st.sidebar.radio("Navegação", ["Abrir Chamado", "Gestão Operacional", "Dashboard & SLA"])
 
-# Trava de Segurança para Módulos Restritos
+# Trava de Segurança exclusiva para a Gestão Operacional
 SENHA_CORRETA = st.secrets.get("SENHA_GESTAO", "manutencao123")
 
-if menu in ["Gestão Operacional", "Dashboard & SLA"]:
+if menu == "Gestão Operacional":
     st.sidebar.markdown("---")
     senha_digitada = st.sidebar.text_input("Chave de Acesso Operacional", type="password")
     
@@ -156,7 +156,7 @@ elif menu == "Gestão Operacional":
                 st.success(f"Chamado {num_chamado} atualizado para '{novo_status}'. A planilha formatará a linha e inserirá a data automaticamente.")
                 st.cache_resource.clear()
 
-# --- MODULO 3: DASHBOARD & SLA (RESTRITO) ---
+# --- MODULO 3: DASHBOARD & SLA (PÚBLICO) ---
 elif menu == "Dashboard & SLA":
     st.title("📊 Painel Gerencial & Indicadores SLA")
     
