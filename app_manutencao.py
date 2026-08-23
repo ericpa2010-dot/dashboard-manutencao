@@ -30,13 +30,11 @@ LIMIAR_ATENCAO = 0.7
 SETORES_CRITICOS = {"Produção", "Montagem", "Expedição", "Antireflexo"}
 MAQUINAS_CRITICAS = {"FORNO 1", "LINHA 3", "MÁQUINA X"}
 
-# Configurações de Filtro e Modo TV na Barra Lateral
 with st.sidebar:
     st.header("⚙️ Configurações & Filtros")
-    modo_tv = st.toggle("📺 Modo TV (Fullscreen & Auto-Scroll)", value=True)
+    modo_tv = st.toggle("📺 Modo TV (Fullscreen)", value=True)
     st.markdown("---")
 
-# Injeção de CSS Dinâmico (Modo TV + Estilização Dark)
 style_modo_tv = """
     header {visibility: hidden;}
     footer {visibility: hidden;}
@@ -89,14 +87,6 @@ st.markdown(f"""
         border-radius: 10px;
         border: 1px solid #334155;
         background-color: #1E293B;
-    }}
-
-    /* CSS para Auto-Scroll na Tabela da TV */
-    .scroll-table-container {{
-        max-height: 400px;
-        overflow-y: auto;
-        border: 1px solid #334155;
-        border-radius: 12px;
     }}
 </style>
 """, unsafe_allow_html=True)
@@ -205,7 +195,13 @@ def carregar_dados() -> pd.DataFrame:
     df["Setor"] = (df[col["setor"]].astype(str) if col["setor"] else "").fillna("")
     df["Máquina"] = (df[col["maquina"]].astype(str) if col["maquina"] else "").fillna("")
     df["Prioridade"] = (df[col["prioridade"]].astype(str) if col["prioridade"] else "").fillna("")
-    df["Técnico"] = (df[col["tecnico"]].astype(str) if col["tecnico"] else "Não Atribuído").fillna("Não Atribuído")
+    
+    # Tratamento seguro da coluna Técnico
+    if col["tecnico"] and col["tecnico"] in df.columns:
+        df["Técnico"] = df[col["tecnico"]].astype(str).fillna("Não Atribuído")
+    else:
+        df["Técnico"] = "Não Atribuído"
+
     df["Chamado"] = df[col["chamado"]]
 
     df["Status_Final"] = classificar_status(df)
@@ -244,7 +240,6 @@ def filtrar_por_setor(df: pd.DataFrame, setores: list) -> pd.DataFrame:
         return df
     return df[df["Setor"].isin(setores)]
 
-# Cabeçalho Principal
 st.title("🛠️ Painel Executivo da Manutenção")
 
 df_inicial = carregar_dados()
@@ -347,18 +342,16 @@ def render_painel(setores, status):
     montar_bloco_prioridade(col_baixa, "BAIXA", "🟢", ["baixa", "baixo"], "Até 24h", "#10B981")
 
     st.markdown("---")
-    
-    # PAINEL DE GARGALOS E PERFORMANCE INDIVIDUAL DE TÉCNICOS
     st.markdown("### 👥 Desempenho da Equipe e Ofensores")
     g1, g2 = st.columns(2)
     
     with g1:
         st.markdown("**Top Responsáveis / Técnicos por Chamados Resolvidos**")
-        if not df_concluidos.empty and "Técnico" in df_concluidos.columns:
+        if not df_concluidos.empty and "Técnico" in df_concluidos.columns and not (df_concluidos["Técnico"] == "Não Atribuído").all():
             top_tec = df_concluidos["Técnico"].value_counts().head(5)
             st.bar_chart(top_tec)
         else:
-            st.info("Sem dados de técnicos atribuídos na planilha.")
+            st.info("Para habilitar este gráfico, adicione a coluna 'Técnico' ou 'Responsável' no Google Sheets.")
 
     with g2:
         st.markdown("**Top Equipamentos / Paradas Recorrentes**")
@@ -366,7 +359,7 @@ def render_painel(setores, status):
         st.bar_chart(top_m)
 
     st.markdown("---")
-    st.markdown("### 📋 Fila Operacional com Reordenação Automática")
+    st.markdown("### 📋 Fila Operacional Reordenada")
 
     colunas_exibir = [
         "Chamado", "Setor", "Máquina", "Prioridade", "Técnico",
@@ -380,7 +373,6 @@ def render_painel(setores, status):
 
     df_tabela = df[colunas_exibir].rename(columns={"Status_Final": "Status"})
 
-    # Renderização da Tabela com Auto-Scroll para TV
     st.dataframe(
         df_tabela.style.apply(montar_estilizador(df), axis=1),
         use_container_width=True,
