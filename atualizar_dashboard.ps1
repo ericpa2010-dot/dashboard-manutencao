@@ -1,4 +1,7 @@
-﻿"""
+Set-Location -Path "C:\Dashboard-Manutencao"
+
+@'
+"""
 Painel de Manutenção
 ---------------------
 pip install streamlit pandas
@@ -341,3 +344,8 @@ def render_painel(setores, status):
 
 render_painel(setor_selecionado, status_selecionado)
 
+'@ | Set-Content -Path "app_manutencao.py" -Encoding UTF8
+
+git add .
+git commit -m "SLA por prioridade (Urgente 2h / Medio 6h / Baixo 24h), ordenacao por urgencia, coluna SLA na tabela"
+git push origin master
