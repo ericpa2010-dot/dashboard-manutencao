@@ -27,25 +27,17 @@ SETORES_PADRAO = [
 ]
 
 # =============================================================================
-# LÓGICA DE URGÊNCIA (AJUSTE AQUI)
+# LÓGICA DE URGÊNCIA
 # =============================================================================
-# SLA por prioridade — vem da coluna "Prioridade" da sua planilha.
-# Mude os números livremente conforme a demanda mudar; não precisa mexer
-# no resto do código.
 PRIORIDADE_SLA_HORAS = {
     "urgente": 2,
     "medio": 6,
     "baixo": 24,
 }
-SLA_PADRAO_HORAS = 24  # usado quando a prioridade não bate com nenhuma acima
+SLA_PADRAO_HORAS = 24
 
-# Fração do SLA a partir da qual o chamado já entra em "quase estourando"
-# (amarelo), antes de virar vermelho ao ultrapassar 100% do prazo.
 LIMIAR_ATENCAO = 0.7
 
-# Coloque aqui os nomes EXATOS como aparecem na planilha. Setor/máquina
-# crítico reduz o prazo efetivo (multiplica o tempo decorrido), então um
-# chamado urgente numa linha crítica estoura o SLA mais rápido.
 SETORES_CRITICOS = {"Produção", "Montagem", "Expedição", "Antireflexo"}
 MAQUINAS_CRITICAS = {"FORNO 1", "LINHA 3", "MÁQUINA X"}
 
@@ -54,7 +46,6 @@ MAQUINAS_CRITICAS = {"FORNO 1", "LINHA 3", "MÁQUINA X"}
 # UTILITÁRIOS
 # =============================================================================
 def normalizar_texto(valor: str) -> str:
-    """Remove acentos e deixa em minúsculo, para comparação robusta."""
     if not isinstance(valor, str):
         return ""
     return (
@@ -67,7 +58,6 @@ def normalizar_texto(valor: str) -> str:
 
 
 def identificar_colunas(df: pd.DataFrame) -> dict:
-    """Localiza colunas pelo cabeçalho (tolerante a variações e acentos)."""
     mapeamento = {
         "abertura": ["Carimbo", "Abertura"],
         "conclusao": ["conclusao", "conclusão"],
@@ -97,12 +87,6 @@ def identificar_colunas(df: pd.DataFrame) -> dict:
 
 
 def classificar_status(df: pd.DataFrame) -> pd.Series:
-    """
-    Regra de negócio confirmada:
-    - Data de conclusão preenchida => Concluído (independente do texto do status)
-    - Sem conclusão + status contém "atu" => Atuando
-    - Caso contrário => Pendente
-    """
     tem_conclusao = pd.notnull(df["Data_Conclusao_dt"])
     status_norm = df["Status_Origem"].astype(str).map(normalizar_texto)
     atuando = status_norm.str.contains("atu", na=False)
@@ -114,7 +98,6 @@ def classificar_status(df: pd.DataFrame) -> pd.Series:
 
 
 def obter_multiplicador_critico(setor: str, maquina: str) -> int:
-    """Dá um 'bump' na urgência se o setor/máquina for crítico (2x); senão 1x."""
     crit_setores = {normalizar_texto(x) for x in SETORES_CRITICOS}
     crit_maquinas = {normalizar_texto(x) for x in MAQUINAS_CRITICAS}
     if normalizar_texto(setor) in crit_setores or normalizar_texto(maquina) in crit_maquinas:
@@ -123,7 +106,6 @@ def obter_multiplicador_critico(setor: str, maquina: str) -> int:
 
 
 def obter_sla_horas(prioridade: str) -> float:
-    """Prazo (em horas) esperado pra essa prioridade, conforme configurado acima."""
     return PRIORIDADE_SLA_HORAS.get(normalizar_texto(prioridade), SLA_PADRAO_HORAS)
 
 
@@ -134,12 +116,6 @@ def formatar_horas(h: float) -> str:
 
 
 def classificar_urgencia(row) -> tuple:
-    """
-    Compara o tempo em aberto contra o SLA da prioridade do chamado
-    (Urgente/Médio/Baixo). Setor/máquina crítico reduz o prazo efetivo.
-    Retorna (label, fundo, borda, texto, sla_horas) pra colorir a linha
-    e ainda mostrar o prazo de referência na tabela.
-    """
     status = row["Status_Final"]
     sla = obter_sla_horas(row["Prioridade"])
 
@@ -147,7 +123,7 @@ def classificar_urgencia(row) -> tuple:
         return ("OK", "#D4EDDA", "#28A745", "#155724", sla)
 
     mult = obter_multiplicador_critico(row["Setor"], row["Máquina"])
-    sla_efetivo = sla / mult  # setor/máquina crítico = prazo mais apertado
+    sla_efetivo = sla / mult
     horas = row["Horas_em_aberto"]
 
     if horas > sla_efetivo:
@@ -162,9 +138,6 @@ def classificar_urgencia(row) -> tuple:
 # =============================================================================
 # CARREGAMENTO
 # =============================================================================
-# Cache com ttl igual ao intervalo de refresh: evita buscar a planilha duas
-# vezes na mesma janela de 60s (uma vez fora do fragment, outra dentro dele),
-# e ainda assim garante dado fresco a cada novo ciclo do fragment.
 @st.cache_data(ttl=INTERVALO_ATUALIZACAO_SEG, show_spinner=False)
 def carregar_dados() -> pd.DataFrame:
     df = pd.read_csv(URL_BASE)
@@ -213,11 +186,6 @@ def carregar_dados() -> pd.DataFrame:
 # UI
 # =============================================================================
 def montar_estilizador(df_com_cores: pd.DataFrame):
-    """
-    Retorna uma função de estilo que consulta df_com_cores pelo índice da
-    linha (row.name) — assim funciona mesmo que a tabela exibida tenha só
-    um subconjunto das colunas.
-    """
     def _style(row):
         info = df_com_cores.loc[row.name]
         estilo = (
@@ -233,8 +201,6 @@ def montar_estilizador(df_com_cores: pd.DataFrame):
 def filtrar_por_setor(df: pd.DataFrame, setores: list) -> pd.DataFrame:
     if not setores:
         return df
-    # comparação exata (evita falso-positivo de substring, ex.: "TI" batendo
-    # em qualquer texto que contenha "ti")
     return df[df["Setor"].isin(setores)]
 
 
@@ -323,7 +289,6 @@ def render_painel(setores, status):
     ]
     colunas_exibir = [c for c in colunas_exibir if c in df.columns]
 
-    # Mais urgente primeiro: estourou SLA > quase estourando > dentro do prazo.
     ordem_urgencia = {"ESTOUROU SLA": 0, "QUASE ESTOURANDO": 1, "DENTRO DO PRAZO": 2, "OK": 2}
     df = df.assign(_ordem=df["Urgência"].map(ordem_urgencia).fillna(3))
     df = df.sort_values(["_ordem", "Horas_em_aberto"], ascending=[True, False])
@@ -340,4 +305,3 @@ def render_painel(setores, status):
 
 
 render_painel(setor_selecionado, status_selecionado)
-
