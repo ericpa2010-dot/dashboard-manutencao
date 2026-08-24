@@ -10,12 +10,55 @@ import plotly.express as px
 # Configuração da página
 st.set_page_config(page_title="Gestão de Manutenção", page_icon="🛠️", layout="wide")
 
-# Oculta o menu de três pontos, o cabeçalho e o rodapé nativo do Streamlit
+# CSS: Design System Minimalista Corporativo
 st.markdown("""
     <style>
+    /* Oculta elementos nativos */
     #MainMenu {visibility: hidden;}
     header {visibility: hidden;}
     footer {visibility: hidden;}
+
+    /* Fundo da aplicação e tipografia */
+    .stApp {
+        background-color: #F8FAFC;
+        color: #0F172A;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+
+    /* Cartões de métricas customizados */
+    div[data-testid="stMetric"] {
+        background-color: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        padding: 16px 20px;
+        border-radius: 12px;
+        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.02);
+    }
+    div[data-testid="stMetricLabel"] {
+        font-size: 0.85rem !important;
+        color: #64748B !important;
+        font-weight: 600 !important;
+        text-transform: uppercase;
+        letter-spacing: 0.025em;
+    }
+    div[data-testid="stMetricValue"] {
+        font-size: 1.8rem !important;
+        color: #0F172A !important;
+        font-weight: 700 !important;
+    }
+
+    /* Ajuste de abas e divisores */
+    hr {
+        border-color: #E2E8F0 !important;
+        margin: 1.5rem 0 !important;
+    }
+
+    /* Tabelas limpas */
+    div[data-testid="stDataFrame"] {
+        background-color: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 12px;
+        padding: 8px;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -41,7 +84,7 @@ def load_data():
     df = pd.DataFrame(data)
     return sheet, df
 
-# FORMATADOR DE TEMPO LEGÍVEL
+# Formatador de tempo amigável
 def formatar_tempo_legivel(horas):
     if pd.isna(horas) or horas is None or horas <= 0:
         return "0h"
@@ -51,7 +94,7 @@ def formatar_tempo_legivel(horas):
     hrs_restantes = int(horas % 24)
     return f"{dias}d {hrs_restantes}h"
 
-# GERADOR DE PARETO LIMPO (TOP 10 + OUTROS)
+# Gerador de Pareto Minimalista
 def criar_grafico_pareto_limpo(df_input, coluna, titulo, top_n=10):
     if coluna not in df_input.columns or df_input[coluna].dropna().empty:
         return None
@@ -83,10 +126,10 @@ def criar_grafico_pareto_limpo(df_input, coluna, titulo, top_n=10):
             x=counts[coluna],
             y=counts['Ocorrências'],
             name="Qtd Chamados",
-            marker_color="#1D3557",
+            marker_color="#334155",
             text=counts['Ocorrências'],
             textposition="outside",
-            textfont=dict(size=13, color="#1D3557")
+            textfont=dict(size=12, color="#0F172A")
         )
     )
     
@@ -97,8 +140,8 @@ def criar_grafico_pareto_limpo(df_input, coluna, titulo, top_n=10):
             name="% Acumulado",
             yaxis="y2",
             mode="lines+markers",
-            line=dict(color="#E63946", width=3),
-            marker=dict(size=8, color="#E63946")
+            line=dict(color="#0284C7", width=2.5),
+            marker=dict(size=7, color="#0284C7")
         )
     )
     
@@ -106,31 +149,33 @@ def criar_grafico_pareto_limpo(df_input, coluna, titulo, top_n=10):
         y=80,
         yref="y2",
         line_dash="dash",
-        line_color="#FFB703",
-        line_width=2
+        line_color="#E11D48",
+        line_width=1.5
     )
     
     fig.update_layout(
-        title=dict(text=f"<b>{titulo}</b>", font=dict(size=16, color="#1D3557")),
-        xaxis=dict(tickfont=dict(size=11, color="#1D3557"), tickangle=-15),
+        template="plotly_white",
+        title=dict(text=f"<b>{titulo}</b>", font=dict(size=15, color="#0F172A")),
+        xaxis=dict(tickfont=dict(size=11, color="#475569"), tickangle=-15, showgrid=False),
         yaxis=dict(
-            title=dict(text="<b>Qtd Chamados</b>", font=dict(size=12, color="#1D3557")),
-            tickfont=dict(size=11),
+            title=dict(text="<b>Qtd Chamados</b>", font=dict(size=12, color="#475569")),
+            tickfont=dict(size=11, color="#475569"),
+            gridcolor="#F1F5F9",
             showgrid=True
         ),
         yaxis2=dict(
-            title=dict(text="<b>% Acumulado</b>", font=dict(size=12, color="#1D3557")),
-            tickfont=dict(size=11),
+            title=dict(text="<b>% Acumulado</b>", font=dict(size=12, color="#475569")),
+            tickfont=dict(size=11, color="#475569"),
             overlaying="y",
             side="right",
             range=[0, 105],
             showgrid=False
         ),
         legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1, font=dict(size=11)),
-        margin=dict(l=20, r=20, t=50, b=60),
-        height=450,
+        margin=dict(l=20, r=20, t=50, b=50),
+        height=420,
         paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="#F8F9FA"
+        plot_bgcolor="rgba(0,0,0,0)"
     )
     
     return fig
@@ -145,7 +190,6 @@ except Exception as e:
 st.sidebar.title("Sistema de Manutenção")
 menu = st.sidebar.radio("Navegação", ["Abrir Chamado", "Gestão Operacional", "Dashboard & SLA"])
 
-# Trava de Segurança exclusiva para a Gestão Operacional
 SENHA_CORRETA = st.secrets.get("SENHA_GESTAO", "manutencao123")
 
 if menu == "Gestão Operacional":
@@ -156,7 +200,7 @@ if menu == "Gestão Operacional":
         st.warning("🔒 Área restrita à equipe de manutenção. Insira a chave de acesso na barra lateral para continuar.")
         st.stop()
 
-# MODULO 1: ABERTURA DE CHAMADO (PÚBLICO)
+# MODULO 1: ABERTURA DE CHAMADO
 if menu == "Abrir Chamado":
     st.title("📌 Abertura de Chamado de Manutenção")
     
@@ -188,29 +232,16 @@ if menu == "Abrir Chamado":
                 proximo_num = len(df) + 1
 
                 nova_linha = [
-                    proximo_num,          # Nº Chamado
-                    agora,                # Carimbo de data/hora
-                    email,                # Endereço de e-mail
-                    nome_setor,           # Nome e Setor
-                    area,                 # Área do chamado
-                    equipamento,          # Equipamento/Sistema/Local
-                    problema,             # Qual é o problema?
-                    observado,            # O que foi observado?
-                    testado,              # O que já foi feito/testado?
-                    impacto,              # Impacto na operação
-                    prioridade,           # Prioridade
-                    info_adicional,       # Informação adicional
-                    "Pendente",           # Status inicial
-                    "",                   # Técnico Responsável
-                    "",                   # Data de conclusão
-                    ""                    # Observação Interna
+                    proximo_num, agora, email, nome_setor, area, equipamento,
+                    problema, observado, testado, impacto, prioridade,
+                    info_adicional, "Pendente", "", "", ""
                 ]
 
                 sheet.append_row(nova_linha)
                 st.success(f"Chamado Nº {proximo_num} registrado com sucesso!")
                 st.cache_resource.clear()
 
-# MODULO 2: GESTÃO OPERACIONAL (RESTRITO)
+# MODULO 2: GESTÃO OPERACIONAL
 elif menu == "Gestão Operacional":
     st.title("⚙️ Gestão Operacional de Chamados")
     
@@ -238,7 +269,6 @@ elif menu == "Gestão Operacional":
                 status_atual = str(linha_atual.get("Status", "Pendente"))
                 opcoes_status = ["Pendente", "Atuando", "Concluído"]
                 idx_st = opcoes_status.index(status_atual) if status_atual in opcoes_status else 0
-                
                 novo_status = st.selectbox("Status", opcoes_status, index=idx_st)
                 
                 tec_atual = str(linha_atual.get("Técnico Responsável", "Eric"))
@@ -253,15 +283,13 @@ elif menu == "Gestão Operacional":
 
             if btn_salvar:
                 linha_excel = idx_linha + 2
-                
                 sheet.update_cell(linha_excel, 13, novo_status)
                 sheet.update_cell(linha_excel, 14, tecnico)
                 sheet.update_cell(linha_excel, 16, obs_interna)
-
-                st.success(f"Chamado {num_chamado} atualizado para '{novo_status}'. A planilha formatará a linha e inserirá a data automaticamente.")
+                st.success(f"Chamado {num_chamado} atualizado com sucesso!")
                 st.cache_resource.clear()
 
-# MODULO 3: DASHBOARD
+# MODULO 3: DASHBOARD MINIMALISTA
 elif menu == "Dashboard & SLA":
     st.title("📊 Painel Gerencial & Indicadores de SLA")
 
@@ -280,7 +308,6 @@ elif menu == "Dashboard & SLA":
     df_calc["dt_abertura"] = pd.to_datetime(df_calc["Carimbo de data/hora"].astype(str), errors="coerce", dayfirst=True)
     df_calc["dt_conclusao"] = pd.to_datetime(df_calc["Data de conclusão"].astype(str), errors="coerce", dayfirst=True)
 
-    # Cálculo de volumes temporais
     df_temp_validos = df_calc.dropna(subset=["dt_abertura"]).copy()
     
     agora_naive = agora_br.replace(tzinfo=None)
@@ -305,7 +332,6 @@ elif menu == "Dashboard & SLA":
 
     df_calc["Meta_SLA_Horas"] = df_calc["Prioridade"].apply(get_sla_target)
 
-    # Processar Concluídos
     df_concluidos = df_calc.dropna(subset=["dt_conclusao", "dt_abertura"]).copy()
     if not df_concluidos.empty:
         df_concluidos["Tempo_Resolucao_Horas"] = (
@@ -332,28 +358,28 @@ elif menu == "Dashboard & SLA":
 
     # LINHA 1: KPIs Globais
     c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("Total de Chamados", total_chamados)
+    c1.metric("Total Chamados", total_chamados)
     c2.metric("Em Aberto", em_aberto)
-    c3.metric("Taxa de Resolução", f"{taxa_conclusao:.0f}%")
+    c3.metric("Taxa Resolução", f"{taxa_conclusao:.0f}%")
     c4.metric("Tempo Médio (TMR)", formatar_tempo_legivel(tmr_geral_num))
-    c5.metric("Conformidade SLA Geral", f"{sla_cumprido_pct:.0f}%")
+    c5.metric("Conformidade SLA", f"{sla_cumprido_pct:.0f}%")
 
     st.markdown("---")
 
-    # LINHA DE CARDS TEMPORAIS
-    st.subheader("📅 Volumetria por Período de Abertura")
+    # LINHA 2: Volumetria por Período
+    st.markdown("##### 📅 Volumetria por Período de Abertura")
     ct1, ct2, ct3, ct4 = st.columns(4)
-    ct1.metric("Criados Hoje", qtd_hoje)
+    ct1.metric("Hoje", qtd_hoje)
     ct2.metric("Esta Semana", qtd_semana)
     ct3.metric("Este Mês", qtd_mes)
     ct4.metric("Este Ano", qtd_ano)
 
     st.markdown("---")
 
-    # CARTÕES DE SLA POR PRIORIDADE
-    st.subheader("🎯 Cumprimento de SLA por Prioridade")
+    # LINHA 3: Cartões de SLA por Prioridade
+    st.markdown("##### 🎯 Cumprimento de SLA por Prioridade")
 
-    def cartao_prioridade(col, nome, meta_horas, cor_borda):
+    def cartao_prioridade_clean(col, nome, meta_horas):
         subset = df_concluidos[
             df_concluidos["Prioridade"].astype(str).str.lower().str.replace("é", "e", regex=False).str.contains(nome.lower())
         ]
@@ -365,45 +391,48 @@ elif menu == "Dashboard & SLA":
         subset_tmr = subset[subset["Tempo_Resolucao_Horas"] <= 720]
         tmr_num = subset_tmr["Tempo_Resolucao_Horas"].mean() if not subset_tmr.empty else (subset["Tempo_Resolucao_Horas"].median() if total else 0.0)
 
+        # Paleta limpa com fundos suaves e bordas elegantes
         if pct >= 90:
-            cor_fundo, cor_texto = "#D4EDDA", "#155724"
+            bg_card, border_card, text_color = "#F0FDF4", "#BBF7D0", "#166534"
         elif pct >= 70:
-            cor_fundo, cor_texto = "#FFF3CD", "#856404"
+            bg_card, border_card, text_color = "#FEFCE8", "#FEF08A", "#854D0E"
         else:
-            cor_fundo, cor_texto = "#F8D7DA", "#721C24"
+            bg_card, border_card, text_color = "#FEF2F2", "#FECACA", "#991B1B"
 
         with col:
             st.markdown(
                 f"""
-                <div style="background-color:{cor_fundo}; padding:18px; border-radius:10px; border-left: 8px solid {cor_borda};">
-                    <h4 style="color:{cor_texto}; margin:0 0 8px 0;">{nome} <span style="font-weight:normal; font-size:0.8em;">(meta: {formatar_tempo_legivel(meta_horas)})</span></h4>
-                    <h1 style="color:{cor_texto}; margin:0;">{pct:.0f}%</h1>
-                    <p style="color:{cor_texto}; margin:4px 0 0 0;">dentro do prazo</p>
-                    <hr style="border-color:{cor_texto}; opacity:0.3; margin:10px 0;">
-                    <p style="color:{cor_texto}; margin:0; font-size:0.9em;">
-                        ✅ {cumpridos} no prazo &nbsp;·&nbsp; 🔴 {estourados} estourados<br>
-                        ⏱️ Tempo Médio (TMR): {formatar_tempo_legivel(tmr_num)}
-                    </p>
+                <div style="background-color:{bg_card}; border:1px solid {border_card}; padding:20px; border-radius:12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <span style="font-weight:700; color:{text_color}; font-size:1rem;">{nome}</span>
+                        <span style="font-size:0.8rem; color:{text_color}; opacity:0.8;">Meta: {formatar_tempo_legivel(meta_horas)}</span>
+                    </div>
+                    <div style="font-size:2.2rem; font-weight:800; color:{text_color}; margin:12px 0 4px 0;">{pct:.0f}%</div>
+                    <div style="font-size:0.85rem; color:{text_color}; font-weight:500;">Conformidade operacional</div>
+                    <div style="margin-top:14px; pt-12px; border-top:1px solid {border_card}; font-size:0.8rem; color:{text_color}; display:flex; justify-content:space-between;">
+                        <span>✅ {cumpridos} OK &nbsp;·&nbsp; 🔴 {estourados} Fora</span>
+                        <span>TMR: <b>{formatar_tempo_legivel(tmr_num)}</b></span>
+                    </div>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
 
     col_alta, col_media, col_baixa = st.columns(3)
-    cartao_prioridade(col_alta, "Alta", 4.0, "#DC3545")
-    cartao_prioridade(col_media, "Média", 8.0, "#FFC107")
-    cartao_prioridade(col_baixa, "Baixa", 78.0, "#28A745")
+    cartao_prioridade_clean(col_alta, "Alta", 4.0)
+    cartao_prioridade_clean(col_media, "Média", 8.0)
+    cartao_prioridade_clean(col_baixa, "Baixa", 78.0)
 
     st.markdown("---")
 
-    # PARETO DE EQUIPAMENTOS (TOP 10)
-    fig_equip = criar_grafico_pareto_limpo(df_calc, "Equipamento/Sistema/Local", "Top 10 Equipamentos Críticos (Pareto 80/20)", top_n=10)
+    # LINHA 4: Pareto Equipamentos
+    fig_equip = criar_grafico_pareto_limpo(df_calc, "Equipamento/Sistema/Local", "Top Equipamentos Críticos (Pareto 80/20)", top_n=10)
     if fig_equip:
         st.plotly_chart(fig_equip, use_container_width=True)
 
     st.markdown("---")
 
-    # PARETO DE SETORES E TENDÊNCIA TEMPORAL MENSAL
+    # LINHA 5: Pareto Setores e Evolução Mensal
     col_p1, col_p2 = st.columns(2)
     
     with col_p1:
@@ -421,25 +450,26 @@ elif menu == "Dashboard & SLA":
             evolucao = evolucao.sort_values("Ano_Mês")
             
             fig_evol = px.bar(evolucao, x="Ano_Mês", y="Volume", text="Volume", title="<b>Evolução Mensal de Chamados (2024+)</b>")
-            fig_evol.update_traces(marker_color="#2A9D8F", textposition="outside", textfont=dict(size=12, color="#1D3557"))
+            fig_evol.update_traces(marker_color="#0284C7", textposition="outside", textfont=dict(size=11, color="#0F172A"))
             fig_evol.update_layout(
-                height=450,
-                title=dict(text="<b>Evolução Mensal de Chamados (2024+)</b>", font=dict(size=16, color="#1D3557")),
-                xaxis=dict(title=dict(text="<b>Mês/Ano</b>", font=dict(size=12)), tickfont=dict(size=11), showgrid=False),
-                yaxis=dict(title=dict(text="<b>Qtd Chamados</b>", font=dict(size=12)), tickfont=dict(size=11), showgrid=True),
+                template="plotly_white",
+                height=420,
+                title=dict(text="<b>Evolução Mensal de Chamados (2024+)</b>", font=dict(size=15, color="#0F172A")),
+                xaxis=dict(title=dict(text="<b>Mês/Ano</b>", font=dict(size=12, color="#475569")), tickfont=dict(size=11, color="#475569"), showgrid=False),
+                yaxis=dict(title=dict(text="<b>Qtd Chamados</b>", font=dict(size=12, color="#475569")), tickfont=dict(size=11, color="#475569"), gridcolor="#F1F5F9", showgrid=True),
                 margin=dict(l=20, r=20, t=50, b=50),
                 paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="#F8F9FA"
+                plot_bgcolor="rgba(0,0,0,0)"
             )
             st.plotly_chart(fig_evol, use_container_width=True)
 
     st.markdown("---")
 
-    # TABELAS DE DESEMPENHO E ESTOURO DE SLA
+    # LINHA 6: Tabelas
     col_t1, col_t2 = st.columns(2)
     
     with col_t1:
-        st.markdown("### 👷 Desempenho Técnico")
+        st.markdown("##### 👷 Desempenho por Técnico")
         if "Técnico Responsável" in df_calc.columns and not df_concluidos.empty:
             tec_stats = df_concluidos.groupby("Técnico Responsável").agg(
                 Atendidos=("Nº Chamado", "count"),
@@ -454,13 +484,12 @@ elif menu == "Dashboard & SLA":
             )
             st.dataframe(tec_exibicao, use_container_width=True, hide_index=True)
         else:
-            st.caption("Aguardando finalização de chamados para consolidação de métricas por técnico.")
+            st.caption("Aguardando finalização de chamados para consolidação de métricas.")
 
     with col_t2:
-        st.markdown("### 🔍 Chamados Fora do SLA (Ativos e Concluídos)")
+        st.markdown("##### 🔍 Chamados Fora do SLA (Ativos e Concluídos)")
         
         lista_fora = []
-        
         for _, row in df_calc.iterrows():
             st_str = str(row.get("Status", "Pendente")).strip()
             dt_ab = row.get("dt_abertura")
@@ -504,17 +533,18 @@ elif menu == "Dashboard & SLA":
             df_fora_sla = pd.DataFrame(lista_fora).sort_values("Atraso_Horas_Num", ascending=False)
             df_display = df_fora_sla[["Nº Chamado", "Área", "Equipamento", "Prioridade", "Status", "Tempo Decorrido", "Atraso", "Técnico"]]
             
-            def colorir_status(val):
+            # Estilo discreto e de alto contraste para a tabela
+            def colorir_status_clean(val):
                 v = str(val).strip()
                 if v == "Concluído":
-                    return "background-color: #D4EDDA; color: #155724; font-weight: bold;"
+                    return "background-color: #DCFCE7; color: #15803D; font-weight: 600;"
                 elif v == "Pendente":
-                    return "background-color: #FFE5D9; color: #C75100; font-weight: bold;"
+                    return "background-color: #FEE2E2; color: #B91C1C; font-weight: 600;"
                 elif v == "Atuando":
-                    return "background-color: #D0E1FD; color: #004085; font-weight: bold;"
+                    return "background-color: #E0F2FE; color: #0369A1; font-weight: 600;"
                 return ""
             
-            styled_df = df_display.style.map(colorir_status, subset=["Status"])
+            styled_df = df_display.style.map(colorir_status_clean, subset=["Status"])
             st.dataframe(styled_df, use_container_width=True, hide_index=True)
         else:
             st.success("✅ Operação 100% em conformidade: nenhum chamado fora do prazo registrado.")
