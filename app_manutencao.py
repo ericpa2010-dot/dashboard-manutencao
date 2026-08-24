@@ -40,6 +40,7 @@ except Exception as e:
 st.sidebar.title("Sistema de Manutenção")
 menu = st.sidebar.radio("Navegação", ["Abrir Chamado", "Gestão Operacional", "Dashboard & SLA"])
 
+# Trava de Segurança exclusiva para a Gestão Operacional
 SENHA_CORRETA = st.secrets.get("SENHA_GESTAO", "manutencao123")
 
 if menu == "Gestão Operacional":
@@ -50,7 +51,7 @@ if menu == "Gestão Operacional":
         st.warning("🔒 Área restrita à equipe de manutenção. Insira a chave de acesso na barra lateral para continuar.")
         st.stop()
 
-# --- MÓDULO 1: ABERTURA DE CHAMADO ---
+# --- MODULO 1: ABERTURA DE CHAMADO (PÚBLICO) ---
 if menu == "Abrir Chamado":
     st.title("📌 Abertura de Chamado de Manutenção")
     
@@ -104,7 +105,7 @@ if menu == "Abrir Chamado":
                 st.success(f"Chamado Nº {proximo_num} registrado com sucesso!")
                 st.cache_resource.clear()
 
-# --- MÓDULO 2: GESTÃO OPERACIONAL ---
+# --- MODULO 2: GESTÃO OPERACIONAL (RESTRITO) ---
 elif menu == "Gestão Operacional":
     st.title("⚙️ Gestão Operacional de Chamados")
     
@@ -155,7 +156,7 @@ elif menu == "Gestão Operacional":
                 st.success(f"Chamado {num_chamado} atualizado para '{novo_status}'. A planilha formatará a linha e inserirá a data automaticamente.")
                 st.cache_resource.clear()
 
-# --- MÓDULO 3: DASHBOARD & SLA ---
+# --- MODULO 3: DASHBOARD & SLA (PÚBLICO) ---
 elif menu == "Dashboard & SLA":
     st.title("📊 Painel Gerencial & Indicadores SLA")
     
