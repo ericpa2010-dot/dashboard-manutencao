@@ -9,7 +9,7 @@ import pytz
 st.set_page_config(page_title="Gestão de Manutenção", page_icon="🛠️", layout="wide")
 
 # Conexão com Google Sheets via gspread (Secrets)
-@st.cache_resource(ttl=30)
+@st.cache_resource(ttl=60)
 def get_gspread_client():
     scope = [
         "https://www.googleapis.com/auth/spreadsheets",
@@ -28,9 +28,6 @@ def load_data():
     sheet = client.open_by_url(st.secrets["spreadsheet"]["url"]).worksheet("CHAMADOS")
     data = sheet.get_all_records()
     df = pd.DataFrame(data)
-    
-    # Padroniza nomes de colunas
-    df.columns = [str(col).strip() for col in df.columns]
     return sheet, df
 
 try:
@@ -39,22 +36,13 @@ except Exception as e:
     st.error(f"Erro ao conectar com a planilha: {e}")
     st.stop()
 
-# Navegação lateral
-st.sidebar.title("Sistema de Manutenção")
-menu = st.sidebar.radio("Navegação", ["Abrir Chamado", "Gestão Operacional", "Dashboard & SLA"])
+# Abas de navegação no topo da página para facilitar em telas de celular
+tab_abrir, tab_gestao, tab_dash = st.tabs(["📌 Abrir Chamado", "⚙️ Gestão Operacional", "📊 Dashboard & SLA"])
 
 SENHA_CORRETA = st.secrets.get("SENHA_GESTAO", "manutencao123")
 
-if menu == "Gestão Operacional":
-    st.sidebar.markdown("---")
-    senha_digitada = st.sidebar.text_input("Chave de Acesso Operacional", type="password")
-    
-    if senha_digitada != SENHA_CORRETA:
-        st.warning("🔒 Área restrita à equipe de manutenção. Insira a chave de acesso na barra lateral para continuar.")
-        st.stop()
-
-# --- MÓDULO 1: ABERTURA DE CHAMADO ---
-if menu == "Abrir Chamado":
+# --- ABA 1: ABERTURA DE CHAMADO (PÚBLICO) ---
+with tab_abrir:
     st.title("📌 Abertura de Chamado de Manutenção")
     
     with st.form("form_abertura", clear_on_submit=True):
@@ -67,7 +55,7 @@ if menu == "Abrir Chamado":
         
         with col2:
             impacto = st.selectbox("Impacto na Operação", ["Parada total", "Parada parcial", "Sem impacto"])
-            prioridade = st.selectbox("Prioridade Sugerida", ["Urgente", "Alta", "Média", "Baixa"])
+            prioridade = st.selectbox("Prioridade Sugerida", ["Alta", "Média", "Baixa"])
             info_adicional = st.text_input("Link de Foto/Anexo (opcional)")
 
         problema = st.text_input("Qual é o problema?", placeholder="Resumo em uma frase")
@@ -107,21 +95,25 @@ if menu == "Abrir Chamado":
                 st.success(f"Chamado Nº {proximo_num} registrado com sucesso!")
                 st.cache_resource.clear()
 
-# --- MÓDULO 2: GESTÃO OPERACIONAL ---
-elif menu == "Gestão Operacional":
+# --- ABA 2: GESTÃO OPERACIONAL (RESTRITO VIA SENHA) ---
+with tab_gestao:
     st.title("⚙️ Gestão Operacional de Chamados")
     
-    status_filtro = st.multiselect("Filtrar por Status", ["Pendente", "Atuando", "Concluído"], default=["Pendente", "Atuando"])
+    senha_digitada = st.text_input("Chave de Acesso Operacional", type="password", key="pwd_gestao")
     
-    df_filtrado = df[df["Status"].isin(status_filtro)] if ("Status" in df.columns and status_filtro) else df
-    
-    colunas_visiveis = [c for c in ["Nº Chamado", "Carimbo de data/hora", "Área do chamado", "Equipamento/Sistema/Local", "Prioridade", "Status", "Técnico Responsável"] if c in df_filtrado.columns]
-    st.dataframe(df_filtrado[colunas_visiveis] if colunas_visiveis else df_filtrado, use_container_width=True)
+    if senha_digitada != SENHA_CORRETA:
+        st.warning("🔒 Área restrita à equipe de manutenção. Insira a chave de acesso para liberar a edição.")
+    else:
+        status_filtro = st.multiselect("Filtrar por Status", ["Pendente", "Atuando", "Concluído"], default=["Pendente", "Atuando"])
+        
+        df_filtrado = df[df["Status"].isin(status_filtro)] if status_filtro else df
+        
+        colunas_visiveis = [c for c in ["Nº Chamado", "Carimbo de data/hora", "Área do chamado", "Equipamento/Sistema/Local", "Prioridade", "Status", "Técnico Responsável"] if c in df_filtrado.columns]
+        st.dataframe(df_filtrado[colunas_visiveis], use_container_width=True)
 
-    st.markdown("---")
-    st.subheader("Atualizar Status de Chamado")
+        st.markdown("---")
+        st.subheader("Atualizar Status de Chamado")
 
-    if "Nº Chamado" in df.columns and not df.empty:
         num_chamado = st.number_input("Informe o Nº do Chamado para atualizar", min_value=1, step=1)
         
         if num_chamado in df["Nº Chamado"].values:
@@ -159,82 +151,36 @@ elif menu == "Gestão Operacional":
                     st.success(f"Chamado {num_chamado} atualizado para '{novo_status}'. A planilha formatará a linha e inserirá a data automaticamente.")
                     st.cache_resource.clear()
 
-# --- MÓDULO 3: DASHBOARD & SLA ---
-elif menu == "Dashboard & SLA":
+# --- ABA 3: DASHBOARD & SLA (PÚBLICO) ---
+with tab_dash:
     st.title("📊 Painel Gerencial & Indicadores SLA")
     
-    if df.empty:
-        st.info("Nenhum chamado cadastrado na planilha até o momento.")
-    else:
-        df_calc = df.copy()
-        
-        # Mapeamento e conversão de datas
-        col_abertura = "Carimbo de data/hora" if "Carimbo de data/hora" in df_calc.columns else df_calc.columns[1]
-        col_conclusao = "Data de conclusão" if "Data de conclusão" in df_calc.columns else df_calc.columns[14]
-        
-        df_calc["dt_abertura"] = pd.to_datetime(df_calc[col_abertura], errors="coerce")
-        df_calc["dt_conclusao"] = pd.to_datetime(df_calc[col_conclusao], errors="coerce")
-        
-        # Cálculo do tempo de resolução em horas
-        df_calc["tempo_horas"] = (df_calc["dt_conclusao"] - df_calc["dt_abertura"]).dt.total_seconds() / 3600.0
-        
-        # Métricas gerais
-        total_chamados = len(df_calc)
-        em_aberto = len(df_calc[df_calc["Status"].isin(["Pendente", "Atuando"])]) if "Status" in df_calc.columns else 0
-        concluidos = df_calc[df_calc["dt_conclusao"].notna() & (df_calc["tempo_horas"] >= 0)]
-        
-        mttr = concluidos["tempo_horas"].mean() if not concluidos.empty else 0.0
-        mediana = concluidos["tempo_horas"].median() if not concluidos.empty else 0.0
+    df_calc = df.copy()
+    df_calc["Carimbo de data/hora"] = pd.to_datetime(df_calc["Carimbo de data/hora"], errors="coerce")
+    df_calc["Data de conclusão"] = pd.to_datetime(df_calc["Data de conclusão"], errors="coerce")
 
-        # Cards principais
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Total de Chamados", total_chamados)
-        c2.metric("Em Aberto / Atuando", em_aberto)
-        c3.metric("MTTR (Média)", f"{mttr:.1f} hrs")
-        c4.metric("Mediana de Resolução", f"{mediana:.1f} hrs")
+    df_concluidos = df_calc.dropna(subset=["Data de conclusão"]).copy()
+    df_concluidos["Tempo_Resolucao_Horas"] = (df_concluidos["Data de conclusão"] - df_concluidos["Carimbo de data/hora"]).dt.total_seconds() / 3600.0
+    df_concluidos = df_concluidos[df_concluidos["Tempo_Resolucao_Horas"] >= 0]
 
-        st.markdown("---")
-        st.subheader("⏱️ Desempenho de SLA por Prioridade")
+    mttr = df_concluidos["Tempo_Resolucao_Horas"].mean() if not df_concluidos.empty else 0
+    mediana = df_concluidos["Tempo_Resolucao_Horas"].median() if not df_concluidos.empty else 0
 
-        # Metas de SLA por prioridade (em horas)
-        metas_sla = {
-            "Urgente": 4,
-            "Alta": 12,
-            "Média": 24,
-            "Baixa": 48
-        }
+    col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+    col_m1.metric("Total de Chamados", len(df))
+    col_m2.metric("Em Aberto / Atuando", len(df[df["Status"].isin(["Pendente", "Atuando"])]))
+    col_m3.metric("MTTR (Média Horas)", f"{mttr:.1f}h")
+    col_m4.metric("Mediana de Resolução", f"{mediana:.1f}h")
 
-        # Cálculo de cumprimento por prioridade
-        resumo_sla = []
-        if "Prioridade" in df_calc.columns and not concluidos.empty:
-            for prio, meta in metas_sla.items():
-                df_prio = concluidos[concluidos["Prioridade"] == prio]
-                total_prio = len(df_prio)
-                no_prazo = len(df_prio[df_prio["tempo_horas"] <= meta])
-                taxa = (no_prazo / total_prio * 100) if total_prio > 0 else 100.0
-                
-                resumo_sla.append({
-                    "Prioridade": prio,
-                    "Meta SLA": f"{meta}h",
-                    "Total Concluídos": total_prio,
-                    "No Prazo": no_prazo,
-                    "Cumprimento SLA (%)": f"{taxa:.1f}%"
-                })
+    st.markdown("---")
+    col_g1, col_g2 = st.columns(2)
+    
+    with col_g1:
+        st.subheader("Chamados por Setor")
+        if "Área do chamado" in df.columns:
+            st.bar_chart(df["Área do chamado"].value_counts())
 
-            df_sla_table = pd.DataFrame(resumo_sla)
-            st.dataframe(df_sla_table, use_container_width=True)
-
-        st.markdown("---")
-        col_g1, col_g2 = st.columns(2)
-        
-        with col_g1:
-            st.subheader("Chamados por Setor / Área")
-            if "Área do chamado" in df_calc.columns:
-                st.bar_chart(df_calc["Área do chamado"].value_counts())
-            elif "Nome e Setor Solicitante" in df_calc.columns:
-                st.bar_chart(df_calc["Nome e Setor Solicitante"].value_counts())
-
-        with col_g2:
-            st.subheader("Distribuição por Prioridade")
-            if "Prioridade" in df_calc.columns:
-                st.bar_chart(df_calc["Prioridade"].value_counts())
+    with col_g2:
+        st.subheader("Distribuição por Prioridade")
+        if "Prioridade" in df.columns:
+            st.bar_chart(df["Prioridade"].value_counts())
