@@ -41,7 +41,7 @@ def load_data():
     df = pd.DataFrame(data)
     return sheet, df
 
-# FORMATADOR DE TEMPO LEGÍVEL (Converter horas em Dias e Horas)
+# FORMATADOR DE TEMPO LEGÍVEL
 def formatar_tempo_legivel(horas):
     if pd.isna(horas) or horas is None or horas <= 0:
         return "0h"
@@ -269,6 +269,9 @@ elif menu == "Dashboard & SLA":
         st.info("Nenhum dado registrado na planilha até o momento.")
         st.stop()
 
+    fuso_br = pytz.timezone("America/Sao_Paulo")
+    agora_br = datetime.now(fuso_br)
+
     total_chamados = len(df)
     em_aberto = len(df[df["Status"].astype(str).str.strip().isin(["Pendente", "Atuando"])])
 
@@ -277,23 +280,38 @@ elif menu == "Dashboard & SLA":
     df_calc["dt_abertura"] = pd.to_datetime(df_calc["Carimbo de data/hora"].astype(str), errors="coerce", dayfirst=True)
     df_calc["dt_conclusao"] = pd.to_datetime(df_calc["Data de conclusão"].astype(str), errors="coerce", dayfirst=True)
 
+    # Cálculo de volumes temporais
+    df_temp_validos = df_calc.dropna(subset=["dt_abertura"]).copy()
+    
+    agora_naive = agora_br.replace(tzinfo=None)
+    inicio_hoje = agora_naive.replace(hour=0, minute=0, second=0, microsecond=0)
+    inicio_semana = inicio_hoje - pd.Timedelta(days=agora_naive.weekday())
+    inicio_mes = agora_naive.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    inicio_ano = agora_naive.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    qtd_hoje = len(df_temp_validos[df_temp_validos["dt_abertura"] >= inicio_hoje])
+    qtd_semana = len(df_temp_validos[df_temp_validos["dt_abertura"] >= inicio_semana])
+    qtd_mes = len(df_temp_validos[df_temp_validos["dt_abertura"] >= inicio_mes])
+    qtd_ano = len(df_temp_validos[df_temp_validos["dt_abertura"] >= inicio_ano])
+
+    METAS_SLA = {"alta": 4.0, "media": 8.0, "baixa": 78.0}
+
+    def get_sla_target(prioridade):
+        p = str(prioridade).strip().lower().replace("é", "e")
+        for chave, meta in METAS_SLA.items():
+            if chave in p:
+                return meta
+        return 8.0
+
+    df_calc["Meta_SLA_Horas"] = df_calc["Prioridade"].apply(get_sla_target)
+
+    # Processar Concluídos
     df_concluidos = df_calc.dropna(subset=["dt_conclusao", "dt_abertura"]).copy()
     if not df_concluidos.empty:
         df_concluidos["Tempo_Resolucao_Horas"] = (
             df_concluidos["dt_conclusao"] - df_concluidos["dt_abertura"]
         ).dt.total_seconds() / 3600.0
         df_concluidos = df_concluidos[df_concluidos["Tempo_Resolucao_Horas"] >= 0]
-
-        METAS_SLA = {"alta": 4.0, "media": 8.0, "baixa": 78.0}
-
-        def get_sla_target(prioridade):
-            p = str(prioridade).strip().lower().replace("é", "e")
-            for chave, meta in METAS_SLA.items():
-                if chave in p:
-                    return meta
-            return 8.0
-
-        df_concluidos["Meta_SLA_Horas"] = df_concluidos["Prioridade"].apply(get_sla_target)
         df_concluidos["SLA_Cumprido"] = df_concluidos["Tempo_Resolucao_Horas"] <= df_concluidos["Meta_SLA_Horas"]
         
         df_tmr_operacional = df_concluidos[df_concluidos["Tempo_Resolucao_Horas"] <= 720]
@@ -303,7 +321,6 @@ elif menu == "Dashboard & SLA":
             tmr_geral_num = df_concluidos["Tempo_Resolucao_Horas"].median()
     else:
         df_concluidos["Tempo_Resolucao_Horas"] = []
-        df_concluidos["Meta_SLA_Horas"] = []
         df_concluidos["SLA_Cumprido"] = []
         tmr_geral_num = 0.0
 
@@ -313,12 +330,23 @@ elif menu == "Dashboard & SLA":
         (df_concluidos["SLA_Cumprido"].sum() / total_concluidos * 100) if total_concluidos > 0 else 100.0
     )
 
+    # LINHA 1: KPIs Globais
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Total de Chamados", total_chamados)
     c2.metric("Em Aberto", em_aberto)
     c3.metric("Taxa de Resolução", f"{taxa_conclusao:.0f}%")
     c4.metric("Tempo Médio (TMR)", formatar_tempo_legivel(tmr_geral_num))
     c5.metric("Conformidade SLA Geral", f"{sla_cumprido_pct:.0f}%")
+
+    st.markdown("---")
+
+    # LINHA DE CARDS TEMPORAIS
+    st.subheader("📅 Volumetria por Período de Abertura")
+    ct1, ct2, ct3, ct4 = st.columns(4)
+    ct1.metric("Criados Hoje", qtd_hoje)
+    ct2.metric("Esta Semana", qtd_semana)
+    ct3.metric("Este Mês", qtd_mes)
+    ct4.metric("Este Ano", qtd_ano)
 
     st.markdown("---")
 
@@ -429,23 +457,64 @@ elif menu == "Dashboard & SLA":
             st.caption("Aguardando finalização de chamados para consolidação de métricas por técnico.")
 
     with col_t2:
-        st.markdown("### 🔍 Chamados Fora do SLA")
-        if not df_concluidos.empty:
-            fora_sla = df_concluidos[df_concluidos["SLA_Cumprido"] == False].copy()
-            if not fora_sla.empty:
-                fora_sla["Atraso_Horas"] = (fora_sla["Tempo_Resolucao_Horas"] - fora_sla["Meta_SLA_Horas"]).round(1)
-                fora_sla["Atraso Formatado"] = fora_sla["Atraso_Horas"].apply(formatar_tempo_legivel)
-                fora_sla["Tempo Resolução"] = fora_sla["Tempo_Resolucao_Horas"].apply(formatar_tempo_legivel)
-                fora_sla = fora_sla.sort_values("Atraso_Horas", ascending=False)
+        st.markdown("### 🔍 Chamados Fora do SLA (Ativos e Concluídos)")
+        
+        lista_fora = []
+        
+        for _, row in df_calc.iterrows():
+            st_str = str(row.get("Status", "Pendente")).strip()
+            dt_ab = row.get("dt_abertura")
+            dt_conc = row.get("dt_conclusao")
+            meta = row.get("Meta_SLA_Horas", 8.0)
+            
+            if pd.isna(dt_ab):
+                continue
                 
-                colunas_sla = [
-                    c for c in [
-                        "Nº Chamado", "Área do chamado", "Equipamento/Sistema/Local",
-                        "Prioridade", "Tempo Resolução", "Atraso Formatado", "Técnico Responsável"
-                    ] if c in fora_sla.columns
-                ]
-                st.dataframe(fora_sla[colunas_sla], use_container_width=True, hide_index=True)
+            if st_str == "Concluído":
+                if pd.notna(dt_conc):
+                    tempo = (dt_conc - dt_ab).total_seconds() / 3600.0
+                    if tempo > meta:
+                        lista_fora.append({
+                            "Nº Chamado": row.get("Nº Chamado"),
+                            "Área": row.get("Área do chamado"),
+                            "Equipamento": row.get("Equipamento/Sistema/Local"),
+                            "Prioridade": row.get("Prioridade"),
+                            "Status": "Concluído",
+                            "Tempo Decorrido": formatar_tempo_legivel(tempo),
+                            "Atraso": formatar_tempo_legivel(tempo - meta),
+                            "Atraso_Horas_Num": tempo - meta,
+                            "Técnico": row.get("Técnico Responsável")
+                        })
             else:
-                st.success("✅ Operação 100% em conformidade: nenhum chamado fora do prazo registrado.")
+                tempo = (agora_naive - dt_ab).total_seconds() / 3600.0
+                if tempo > meta:
+                    lista_fora.append({
+                        "Nº Chamado": row.get("Nº Chamado"),
+                        "Área": row.get("Área do chamado"),
+                        "Equipamento": row.get("Equipamento/Sistema/Local"),
+                        "Prioridade": row.get("Prioridade"),
+                        "Status": st_str if st_str in ["Pendente", "Atuando"] else "Pendente",
+                        "Tempo Decorrido": formatar_tempo_legivel(tempo),
+                        "Atraso": formatar_tempo_legivel(tempo - meta),
+                        "Atraso_Horas_Num": tempo - meta,
+                        "Técnico": row.get("Técnico Responsável")
+                    })
+                    
+        if lista_fora:
+            df_fora_sla = pd.DataFrame(lista_fora).sort_values("Atraso_Horas_Num", ascending=False)
+            df_display = df_fora_sla[["Nº Chamado", "Área", "Equipamento", "Prioridade", "Status", "Tempo Decorrido", "Atraso", "Técnico"]]
+            
+            def colorir_status(val):
+                v = str(val).strip()
+                if v == "Concluído":
+                    return "background-color: #D4EDDA; color: #155724; font-weight: bold;"
+                elif v == "Pendente":
+                    return "background-color: #FFE5D9; color: #C75100; font-weight: bold;"
+                elif v == "Atuando":
+                    return "background-color: #D0E1FD; color: #004085; font-weight: bold;"
+                return ""
+            
+            styled_df = df_display.style.map(colorir_status, subset=["Status"])
+            st.dataframe(styled_df, use_container_width=True, hide_index=True)
         else:
-            st.info("Nenhum chamado concluído ainda para avaliar.")
+            st.success("✅ Operação 100% em conformidade: nenhum chamado fora do prazo registrado.")
