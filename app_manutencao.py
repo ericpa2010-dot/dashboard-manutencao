@@ -277,25 +277,33 @@ with tab_abertura:
     with st.form("form_abertura", clear_on_submit=True):
         col1, col2 = st.columns(2)
         with col1:
-            nome_setor = st.text_input("Nome e Setor Solicitante", placeholder="Ex: Guilherme (Surfaçagem)")
+            nome_setor = st.text_input("Nome e Setor Solicitante *", placeholder="Ex: Guilherme (Surfaçagem)")
             email = st.text_input("E-mail para Notificação")
-            area = st.selectbox("Área do Chamado", ["Surfaçagem", "AR", "Montagem", "Estoque", "Expedição", "Atendimento", "TI", "Diretoria", "Geral"])
-            equipamento = st.text_input("Equipamento / Sistema / Local", placeholder="Ex: Satisloh SL-501")
+            area = st.selectbox("Área do Chamado *", ["Surfaçagem", "AR", "Montagem", "Estoque", "Expedição", "Atendimento", "TI", "Diretoria", "Geral"])
+            equipamento = st.text_input("Equipamento / Sistema / Local *", placeholder="Ex: Satisloh SL-501")
         
         with col2:
             impacto = st.selectbox("Impacto na Operação", ["Parada total", "Parada parcial", "Sem impacto"])
             prioridade = st.selectbox("Prioridade Sugerida", ["Alta", "Média", "Baixa"])
             info_adicional = st.text_input("Link de Foto/Anexo (opcional)")
 
-        problema = st.text_input("Qual é o problema?", placeholder="Resumo em uma frase")
+        problema = st.text_input("Qual é o problema? *", placeholder="Resumo claro do problema")
         observado = st.text_area("O que foi observado?", placeholder="Detalhes do comportamento do equipamento")
         testado = st.text_area("O que já foi feito/testado?", placeholder="Ações iniciais tentadas antes do chamado")
 
         submitted = st.form_submit_button("Enviar Chamado")
 
         if submitted:
-            if not nome_setor or not problema or not equipamento:
-                st.warning("Por favor, preencha os campos obrigatórios.")
+            faltantes = []
+            if not nome_setor.strip():
+                faltantes.append("Nome e Setor Solicitante")
+            if not equipamento.strip():
+                faltantes.append("Equipamento / Sistema / Local")
+            if not problema.strip():
+                faltantes.append("Qual é o problema?")
+
+            if faltantes:
+                st.error(f"⚠️ Preenchimento obrigatório para: {', '.join(faltantes)}.")
             else:
                 fuso_br = pytz.timezone("America/Sao_Paulo")
                 agora = datetime.now(fuso_br).strftime("%d/%m/%Y %H:%M:%S")
@@ -347,8 +355,10 @@ with tab_dash:
         df_calc["Num_Chamado_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["N*Chamado", "Nº Chamado", "N° Chamado"], "0"), axis=1)
         df_calc["Num_Chamado_Num"] = pd.to_numeric(df_calc["Num_Chamado_Norm"], errors="coerce").fillna(0).astype(int)
         
+        df_calc["Solicitante_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["Nome e Setor", "Nome e Setor Solicitante", "Solicitante", "Nome"], "Não informado"), axis=1)
         df_calc["Equipamento_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["Equipamento / Sistema / Local", "Equipamento/Sistema/Local", "Máquina ou Equipamento"], "Não informado"), axis=1)
         df_calc["Problema_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["Qual é o problema?", "Descrição do chamado", "Tipo de problema"], "Sem descrição"), axis=1)
+        df_calc["Impacto_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["Qual é o impacto na operação?", "Impacto na operação", "Impacto"], "Não informado"), axis=1)
         df_calc["Area_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["Área do chamado", "Nome e Setor"], "Geral"), axis=1)
         
         def obter_status_sanitizado(r):
@@ -504,7 +514,7 @@ with tab_dash:
 
         st.markdown("---")
 
-        # TABELA 1: MONITORAMENTO DE CHAMADOS ATIVOS (EM ABERTO) - ATUALIZAÇÃO EM TEMPO REAL (1s)
+        # TABELA 1: MONITORAMENTO DE CHAMADOS ATIVOS COM PROBLEMA E IMPACTO
         def render_secao_monitoramento_ativos(df_input, total_em_aberto):
             st.markdown(f"##### 🚨 Monitoramento Operacional (Chamados Ativos em Aberto: {total_em_aberto})")
             
@@ -538,10 +548,13 @@ with tab_dash:
                     status_formatado = "🟣 Atuando" if st_str == "Atuando" else "🟡 Pendente"
 
                     lista_ativos.append({
-                        "Nº Chamado": row.get("Num_Chamado_Num"),
+                        "Nº": row.get("Num_Chamado_Num"),
+                        "Solicitante": row.get("Solicitante_Norm"),
                         "Abertura": dt_ab_str,
                         "Área": row.get("Area_Norm"),
                         "Equipamento": row.get("Equipamento_Norm"),
+                        "Descrição do Problema": row.get("Problema_Norm"),
+                        "Impacto": row.get("Impacto_Norm"),
                         "Prioridade": row.get("Prioridade"),
                         "Status": status_formatado,
                         "Tempo Decorrido": tempo_dec_str,
@@ -550,8 +563,8 @@ with tab_dash:
                     })
 
             if lista_ativos:
-                df_ativos = pd.DataFrame(lista_ativos).sort_values("Nº Chamado", ascending=False)
-                df_disp_ativos = df_ativos[["Nº Chamado", "Abertura", "Área", "Equipamento", "Prioridade", "Status", "Tempo Decorrido", "Situação SLA", "Técnico"]]
+                df_ativos = pd.DataFrame(lista_ativos).sort_values("Nº", ascending=False)
+                df_disp_ativos = df_ativos[["Nº", "Solicitante", "Abertura", "Área", "Equipamento", "Descrição do Problema", "Impacto", "Prioridade", "Status", "Tempo Decorrido", "Situação SLA", "Técnico"]]
                 
                 def colorir_linha_ativos(row):
                     prio = str(row["Prioridade"]).strip().lower()
@@ -575,7 +588,7 @@ with tab_dash:
 
         st.markdown("---")
 
-        # TABELA 2: HISTÓRICO GERAL DE SLA (TODOS OS CHAMADOS: DO MAIOR PARA O MENOR)
+        # TABELA 2: HISTÓRICO GERAL DE CHAMADOS
         st.markdown(f"##### 📋 Histórico Geral de Chamados & SLA (Total: {total_chamados})")
 
         lista_geral = []
@@ -615,10 +628,13 @@ with tab_dash:
                 status_disp = "🟣 Atuando" if st_str == "Atuando" else "🟡 Pendente"
 
             lista_geral.append({
-                "Nº Chamado": row.get("Num_Chamado_Num"),
+                "Nº": row.get("Num_Chamado_Num"),
+                "Solicitante": row.get("Solicitante_Norm"),
                 "Abertura": dt_ab_str,
                 "Área": row.get("Area_Norm"),
                 "Equipamento": row.get("Equipamento_Norm"),
+                "Descrição do Problema": row.get("Problema_Norm"),
+                "Impacto": row.get("Impacto_Norm"),
                 "Prioridade": row.get("Prioridade"),
                 "Status": status_disp,
                 "Tempo / TMR": tmr_str,
@@ -627,8 +643,8 @@ with tab_dash:
             })
 
         if lista_geral:
-            df_geral = pd.DataFrame(lista_geral).sort_values("Nº Chamado", ascending=False)
-            df_disp_geral = df_geral[["Nº Chamado", "Abertura", "Área", "Equipamento", "Prioridade", "Status", "Tempo / TMR", "Situação SLA", "Técnico"]]
+            df_geral = pd.DataFrame(lista_geral).sort_values("Nº", ascending=False)
+            df_disp_geral = df_geral[["Nº", "Solicitante", "Abertura", "Área", "Equipamento", "Descrição do Problema", "Impacto", "Prioridade", "Status", "Tempo / TMR", "Situação SLA", "Técnico"]]
 
             def colorir_linha_geral(row):
                 st_val = str(row["Status"])
@@ -687,7 +703,7 @@ with tab_gestao:
         
         df_filtrado = df[df["Status"].isin(status_filtro)] if status_filtro else df
         
-        colunas_visiveis = [c for c in ["N*Chamado", "Nº Chamado", "Carimbo de data/hora", "Área do chamado", "Equipamento / Sistema / Local", "Prioridade", "Status", "Técnico Responsável"] if c in df_filtrado.columns]
+        colunas_visiveis = [c for c in ["N*Chamado", "Nº Chamado", "Carimbo de data/hora", "Nome e Setor", "Área do chamado", "Equipamento / Sistema / Local", "Qual é o problema?", "Qual é o impacto na operação?", "Prioridade", "Status", "Técnico Responsável"] if c in df_filtrado.columns]
         st.dataframe(df_filtrado[colunas_visiveis], use_container_width=True)
 
         st.markdown("---")
