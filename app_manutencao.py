@@ -385,11 +385,11 @@ with tab_dash:
 
         df_temp_validos = df_calc.dropna(subset=["dt_abertura"]).copy()
         
-        agora_naive = pd.Timestamp(agora_br.replace(tzinfo=None))
-        inicio_hoje = agora_naive.floor("D")
-        inicio_semana = inicio_hoje - pd.Timedelta(days=agora_naive.weekday())
-        inicio_mes = agora_naive.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        inicio_ano = agora_naive.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        agora_naive_geral = pd.Timestamp(agora_br.replace(tzinfo=None))
+        inicio_hoje = agora_naive_geral.floor("D")
+        inicio_semana = inicio_hoje - pd.Timedelta(days=agora_naive_geral.weekday())
+        inicio_mes = agora_naive_geral.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        inicio_ano = agora_naive_geral.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
 
         qtd_hoje = len(df_temp_validos[df_temp_validos["dt_abertura"] >= inicio_hoje])
         qtd_semana = len(df_temp_validos[df_temp_validos["dt_abertura"] >= inicio_semana])
@@ -504,66 +504,74 @@ with tab_dash:
 
         st.markdown("---")
 
-        # TABELA 1: MONITORAMENTO DE CHAMADOS ATIVOS (EM ABERTO)
-        st.markdown(f"##### 🚨 Monitoramento Operacional (Chamados Ativos em Aberto: {em_aberto})")
-        
-        lista_ativos = []
-        for _, row in df_calc.iterrows():
-            st_str = str(row.get("Status_Clean", "Pendente"))
-            dt_ab = row.get("dt_abertura")
-            meta = row.get("Meta_SLA_Horas", 8.0)
-            raw_ab = extrair_campo(row, ["Carimbo de data/hora", "Carimbo de Data/Hora", "Data/Hora", "Data de Abertura"], "")
+        # TABELA 1: MONITORAMENTO DE CHAMADOS ATIVOS (EM ABERTO) - ATUALIZAÇÃO EM TEMPO REAL (1s)
+        def render_secao_monitoramento_ativos(df_input, total_em_aberto):
+            st.markdown(f"##### 🚨 Monitoramento Operacional (Chamados Ativos em Aberto: {total_em_aberto})")
             
-            if st_str != "Concluído":
-                dt_ab_str = formatar_dt_exibicao(dt_ab, raw_ab)
+            agora_loop = pd.Timestamp(datetime.now(pytz.timezone("America/Sao_Paulo")).replace(tzinfo=None))
+            lista_ativos = []
+            
+            for _, row in df_input.iterrows():
+                st_str = str(row.get("Status_Clean", "Pendente"))
+                dt_ab = row.get("dt_abertura")
+                meta = row.get("Meta_SLA_Horas", 8.0)
+                raw_ab = extrair_campo(row, ["Carimbo de data/hora", "Carimbo de Data/Hora", "Data/Hora", "Data de Abertura"], "")
                 
-                if pd.notna(dt_ab):
-                    tempo_decorrido = (agora_naive - dt_ab).total_seconds() / 3600.0
-                    tempo_restante = meta - tempo_decorrido
+                if st_str != "Concluído":
+                    dt_ab_str = formatar_dt_exibicao(dt_ab, raw_ab)
                     
-                    if tempo_restante >= 0:
-                        tempo_dec_str = f"⏳ {formatar_tempo_legivel(tempo_restante)} restantes"
-                        status_sla = f"🟢 No Prazo ({formatar_tempo_legivel(tempo_restante)} restantes)"
+                    if pd.notna(dt_ab):
+                        tempo_decorrido = (agora_loop - dt_ab).total_seconds() / 3600.0
+                        tempo_restante = meta - tempo_decorrido
+                        
+                        if tempo_restante >= 0:
+                            tempo_dec_str = f"⏳ {formatar_tempo_legivel(tempo_restante)} restantes"
+                            status_sla = f"🟢 No Prazo ({formatar_tempo_legivel(tempo_restante)} restantes)"
+                        else:
+                            atraso = abs(tempo_restante)
+                            tempo_dec_str = f"🔴 Estourado (+{formatar_tempo_legivel(atraso)})"
+                            status_sla = f"🔴 Estourado (+{formatar_tempo_legivel(atraso)})"
                     else:
-                        atraso = abs(tempo_restante)
-                        tempo_dec_str = f"🔴 Estourado (+{formatar_tempo_legivel(atraso)})"
-                        status_sla = f"🔴 Estourado (+{formatar_tempo_legivel(atraso)})"
-                else:
-                    tempo_dec_str = "-"
-                    status_sla = "⚪ Sem data de abertura"
+                        tempo_dec_str = "-"
+                        status_sla = "⚪ Sem data de abertura"
 
-                status_formatado = "🟣 Atuando" if st_str == "Atuando" else "🟡 Pendente"
+                    status_formatado = "🟣 Atuando" if st_str == "Atuando" else "🟡 Pendente"
 
-                lista_ativos.append({
-                    "Nº Chamado": row.get("Num_Chamado_Num"),
-                    "Abertura": dt_ab_str,
-                    "Área": row.get("Area_Norm"),
-                    "Equipamento": row.get("Equipamento_Norm"),
-                    "Prioridade": row.get("Prioridade"),
-                    "Status": status_formatado,
-                    "Tempo Decorrido": tempo_dec_str,
-                    "Situação SLA": status_sla,
-                    "Técnico": row.get("Técnico Responsável") if str(row.get("Técnico Responsável")).strip() != "" else "Não atribuído"
-                })
+                    lista_ativos.append({
+                        "Nº Chamado": row.get("Num_Chamado_Num"),
+                        "Abertura": dt_ab_str,
+                        "Área": row.get("Area_Norm"),
+                        "Equipamento": row.get("Equipamento_Norm"),
+                        "Prioridade": row.get("Prioridade"),
+                        "Status": status_formatado,
+                        "Tempo Decorrido": tempo_dec_str,
+                        "Situação SLA": status_sla,
+                        "Técnico": row.get("Técnico Responsável") if str(row.get("Técnico Responsável")).strip() != "" else "Não atribuído"
+                    })
 
-        if lista_ativos:
-            df_ativos = pd.DataFrame(lista_ativos).sort_values("Nº Chamado", ascending=False)
-            df_disp_ativos = df_ativos[["Nº Chamado", "Abertura", "Área", "Equipamento", "Prioridade", "Status", "Tempo Decorrido", "Situação SLA", "Técnico"]]
-            
-            def colorir_linha_ativos(row):
-                prio = str(row["Prioridade"]).strip().lower()
-                sit = str(row["Situação SLA"])
-                if "Estourado" in sit or "alta" in prio:
-                    return ['background-color: #7F1D1D; color: #FECDD3; font-weight: 700;'] * len(row)
-                elif "media" in prio:
-                    return ['background-color: #78350F; color: #FDE68A; font-weight: 700;'] * len(row)
-                else:
-                    return ['background-color: #1E3A8A; color: #F0F9FF; font-weight: 700;'] * len(row)
+            if lista_ativos:
+                df_ativos = pd.DataFrame(lista_ativos).sort_values("Nº Chamado", ascending=False)
+                df_disp_ativos = df_ativos[["Nº Chamado", "Abertura", "Área", "Equipamento", "Prioridade", "Status", "Tempo Decorrido", "Situação SLA", "Técnico"]]
+                
+                def colorir_linha_ativos(row):
+                    prio = str(row["Prioridade"]).strip().lower()
+                    sit = str(row["Situação SLA"])
+                    if "Estourado" in sit or "alta" in prio:
+                        return ['background-color: #7F1D1D; color: #FECDD3; font-weight: 700;'] * len(row)
+                    elif "media" in prio:
+                        return ['background-color: #78350F; color: #FDE68A; font-weight: 700;'] * len(row)
+                    else:
+                        return ['background-color: #1E3A8A; color: #F0F9FF; font-weight: 700;'] * len(row)
 
-            styled_ativos = df_disp_ativos.style.apply(colorir_linha_ativos, axis=1)
-            st.dataframe(styled_ativos, use_container_width=True, hide_index=True)
-        else:
-            st.success("✅ Nenhum chamado ativo pendente no momento.")
+                styled_ativos = df_disp_ativos.style.apply(colorir_linha_ativos, axis=1)
+                st.dataframe(styled_ativos, use_container_width=True, hide_index=True)
+            else:
+                st.success("✅ Nenhum chamado ativo pendente no momento.")
+
+        if hasattr(st, "fragment"):
+            render_secao_monitoramento_ativos = st.fragment(run_every="1s")(render_secao_monitoramento_ativos)
+
+        render_secao_monitoramento_ativos(df_calc, em_aberto)
 
         st.markdown("---")
 
@@ -592,7 +600,7 @@ with tab_dash:
                 status_disp = "🟢 Concluído"
             else:
                 if pd.notna(dt_ab):
-                    tempo_decorrido = (agora_naive - dt_ab).total_seconds() / 3600.0
+                    tempo_decorrido = (agora_naive_geral - dt_ab).total_seconds() / 3600.0
                     tempo_restante = meta - tempo_decorrido
                     if tempo_restante < 0:
                         sit_str = f"🔴 Estourado (+{formatar_tempo_legivel(abs(tempo_restante))})"
