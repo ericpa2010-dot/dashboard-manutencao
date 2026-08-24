@@ -32,7 +32,7 @@ def load_data():
     df = pd.DataFrame(data)
     return sheet, df
 
-# FUNÇÃO DE PARETO COMPATÍVEL COM PLOTLY MODERNO
+# FUNÇÃO DE PARETO TOTALMENTE COMPATÍVEL COM PLOTLY MODERNO
 def criar_grafico_pareto(df_input, coluna, titulo):
     if coluna not in df_input.columns or df_input[coluna].dropna().empty:
         return None
@@ -83,12 +83,12 @@ def criar_grafico_pareto(df_input, coluna, titulo):
         title=dict(text=f"<b>{titulo}</b>", font=dict(size=18, color="#1D3557")),
         xaxis=dict(tickfont=dict(size=12, color="#1D3557"), tickangle=-20),
         yaxis=dict(
-            title=dict(text="<b>Número de Chamados</b>", font=dict(size=13)),
+            title=dict(text="<b>Número de Chamados</b>", font=dict(size=13, color="#1D3557")),
             tickfont=dict(size=12),
             showgrid=True
         ),
         yaxis2=dict(
-            title=dict(text="<b>% Acumulado</b>", font=dict(size=13)),
+            title=dict(text="<b>% Acumulado</b>", font=dict(size=13, color="#1D3557")),
             tickfont=dict(size=12),
             overlaying="y",
             side="right",
@@ -240,11 +240,10 @@ elif menu == "Dashboard & SLA":
 
     df_calc = df.copy()
     
-    # Tratamento flexivel de datas e saneamento de anos incorretos
+    # Tratamento de datas e descarte de anos incorretos anteriores a 2024
     df_calc["Carimbo de data/hora"] = pd.to_datetime(df_calc["Carimbo de data/hora"], errors="coerce", format="mixed")
     df_calc["Data de conclusão"] = pd.to_datetime(df_calc["Data de conclusão"], errors="coerce", format="mixed")
     
-    # Corte temporal eliminando registros anteriores a 2024
     df_calc = df_calc[df_calc["Carimbo de data/hora"] >= pd.Timestamp("2024-01-01")]
 
     df_concluidos = df_calc.dropna(subset=["Data de conclusão"]).copy()
@@ -354,7 +353,7 @@ elif menu == "Dashboard & SLA":
             df_tempo["Data_Dia"] = df_tempo["Carimbo de data/hora"].dt.date
             evolucao = df_tempo.groupby("Data_Dia").size().reset_index(name="Volume")
             
-            fig_evol = px.line(evolucao, x="Data_Dia", y="Volume", markers=True, title="<b>Evolução Diária (2024 - Atual)</b>")
+            fig_evol = px.line(evolucao, x="Data_Dia", y="Volume", markers=True)
             fig_evol.update_traces(line_color="#2A9D8F", line_width=4, marker=dict(size=8, color="#E76F51"))
             fig_evol.update_layout(
                 height=500,
