@@ -496,7 +496,7 @@ with tab_dash:
         col_alta, col_media, col_baixa = st.columns(3)
         cartao_prioridade_neon(col_alta, "Alta", 4.0, "#EF4444", "#F87171")
         cartao_prioridade_neon(col_media, "Média", 8.0, "#F59E0B", "#FBBF24")
-        cartao_prioridade_neon(col_baixa, "Baixa", 78.0, "#0D9488", "#2DD4BF")
+        cartao_prioridade_neon(col_baixa, "Baixa", 78.0, "#0284C7", "#38BDF8")
 
         st.markdown("---")
 
@@ -554,7 +554,7 @@ with tab_dash:
                 elif "media" in prio:
                     return ['background-color: #78350F; color: #FDE68A; font-weight: 700;'] * len(row)
                 else:
-                    return ['background-color: #134E4A; color: #99F6E4; font-weight: 700;'] * len(row)
+                    return ['background-color: #1E3A8A; color: #F0F9FF; font-weight: 700;'] * len(row)
 
             styled_ativos = df_disp_ativos.style.apply(colorir_linha_ativos, axis=1)
             st.dataframe(styled_ativos, use_container_width=True, hide_index=True)
@@ -630,7 +630,7 @@ with tab_dash:
                     elif "media" in prio:
                         return ['background-color: #78350F; color: #FDE68A; font-weight: 700;'] * len(row)
                     else:
-                        return ['background-color: #134E4A; color: #99F6E4; font-weight: 700;'] * len(row)
+                        return ['background-color: #1E3A8A; color: #F0F9FF; font-weight: 700;'] * len(row)
 
             styled_geral = df_disp_geral.style.apply(colorir_linha_geral, axis=1)
             st.dataframe(styled_geral, use_container_width=True, hide_index=True)
