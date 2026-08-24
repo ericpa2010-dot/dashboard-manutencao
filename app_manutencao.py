@@ -240,10 +240,24 @@ elif menu == "Dashboard & SLA":
 
     df_calc = df.copy()
     
-    # Tratamento de datas e descarte de anos incorretos anteriores a 2024
-    df_calc["Carimbo de data/hora"] = pd.to_datetime(df_calc["Carimbo de data/hora"], errors="coerce", format="mixed")
-    df_calc["Data de conclusão"] = pd.to_datetime(df_calc["Data de conclusão"], errors="coerce", format="mixed")
+    # Tratamento robusto de datas para evitar exceções de tipos mistos
+    df_calc["Carimbo de data/hora"] = pd.to_datetime(df_calc["Carimbo de data/hora"].astype(str), errors="coerce", dayfirst=True)
+    df_calc["Data de conclusão"] = pd.to_datetime(df_calc["Data de conclusão"].astype(str), errors="coerce", dayfirst=True)
     
+    # Remoção de fuso horário para comparação direta
+    if hasattr(df_calc["Carimbo de data/hora"].dt, "tz_localize"):
+        try:
+            df_calc["Carimbo de data/hora"] = df_calc["Carimbo de data/hora"].dt.tz_localize(None)
+        except TypeError:
+            pass
+
+    if hasattr(df_calc["Data de conclusão"].dt, "tz_localize"):
+        try:
+            df_calc["Data de conclusão"] = df_calc["Data de conclusão"].dt.tz_localize(None)
+        except TypeError:
+            pass
+
+    # Corte temporal eliminando registros inconsistentes anteriores a 2024
     df_calc = df_calc[df_calc["Carimbo de data/hora"] >= pd.Timestamp("2024-01-01")]
 
     df_concluidos = df_calc.dropna(subset=["Data de conclusão"]).copy()
