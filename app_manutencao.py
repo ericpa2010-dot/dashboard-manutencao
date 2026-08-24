@@ -10,6 +10,15 @@ import plotly.express as px
 # Configuração da página
 st.set_page_config(page_title="Gestão de Manutenção", page_icon="🛠️", layout="wide")
 
+# Oculta o menu de três pontos, o cabeçalho e o rodapé nativo do Streamlit
+st.markdown("""
+    <style>
+    #MainMenu {visibility: hidden;}
+    header {visibility: hidden;}
+    footer {visibility: hidden;}
+    </style>
+""", unsafe_allow_html=True)
+
 # Conexão com Google Sheets via gspread (Secrets)
 @st.cache_resource(ttl=60)
 def get_gspread_client():
@@ -287,7 +296,6 @@ elif menu == "Dashboard & SLA":
         df_concluidos["Meta_SLA_Horas"] = df_concluidos["Prioridade"].apply(get_sla_target)
         df_concluidos["SLA_Cumprido"] = df_concluidos["Tempo_Resolucao_Horas"] <= df_concluidos["Meta_SLA_Horas"]
         
-        # Filtro de descarte de distorções históricas exageradas (>30 dias) para TMR Operacional Real
         df_tmr_operacional = df_concluidos[df_concluidos["Tempo_Resolucao_Horas"] <= 720]
         if not df_tmr_operacional.empty:
             tmr_geral_num = df_tmr_operacional["Tempo_Resolucao_Horas"].mean()
@@ -326,7 +334,6 @@ elif menu == "Dashboard & SLA":
         estourados = total - cumpridos
         pct = (cumpridos / total * 100) if total else 100.0
         
-        # Filtro local de distorções
         subset_tmr = subset[subset["Tempo_Resolucao_Horas"] <= 720]
         tmr_num = subset_tmr["Tempo_Resolucao_Horas"].mean() if not subset_tmr.empty else (subset["Tempo_Resolucao_Horas"].median() if total else 0.0)
 
