@@ -4,6 +4,8 @@ import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime
 import pytz
+import plotly.graph_objects as go
+import plotly.express as px
 
 # Configuração da página
 st.set_page_config(page_title="Gestão de Manutenção", page_icon="🛠️", layout="wide")
@@ -51,7 +53,7 @@ if menu == "Gestão Operacional":
         st.warning("🔒 Área restrita à equipe de manutenção. Insira a chave de acesso na barra lateral para continuar.")
         st.stop()
 
-# --- MODULO 1: ABERTURA DE CHAMADO (PÚBLICO) ---
+# MODULO 1: ABERTURA DE CHAMADO (PÚBLICO)
 if menu == "Abrir Chamado":
     st.title("📌 Abertura de Chamado de Manutenção")
     
@@ -105,7 +107,7 @@ if menu == "Abrir Chamado":
                 st.success(f"Chamado Nº {proximo_num} registrado com sucesso!")
                 st.cache_resource.clear()
 
-# --- MODULO 2: GESTÃO OPERACIONAL (RESTRITO) ---
+# MODULO 2: GESTÃO OPERACIONAL (RESTRITO)
 elif menu == "Gestão Operacional":
     st.title("⚙️ Gestão Operacional de Chamados")
     
@@ -156,7 +158,73 @@ elif menu == "Gestão Operacional":
                 st.success(f"Chamado {num_chamado} atualizado para '{novo_status}'. A planilha formatará a linha e inserirá a data automaticamente.")
                 st.cache_resource.clear()
 
-# --- MODULO 3: DASHBOARD & SLA ---
+# FUNÇÃO AUXILIAR DE PARETO
+def criar_grafico_pareto(df_input, coluna, titulo):
+    if coluna not in df_input.columns or df_input[coluna].dropna().empty:
+        return None
+    
+    counts = df_input[coluna].value_counts().reset_index()
+    counts.columns = [coluna, 'Ocorrências']
+    counts = counts.sort_values(by='Ocorrências', ascending=False)
+    
+    counts['Acumulado'] = counts['Ocorrências'].cumsum()
+    total = counts['Ocorrências'].sum()
+    counts['Percentual_Acumulado'] = (counts['Acumulado'] / total) * 100 if total > 0 else 0
+    
+    fig = go.Figure()
+    
+    fig.add_trace(
+        go.Bar(
+            x=counts[coluna],
+            y=counts['Ocorrências'],
+            name="Ocorrências",
+            marker_color="#1F77B4",
+            text=counts['Ocorrências'],
+            textposition="auto"
+        )
+    )
+    
+    fig.add_trace(
+        go.Scatter(
+            x=counts[coluna],
+            y=counts['Percentual_Acumulado'],
+            name="% Acumulado (Pareto)",
+            yaxis="y2",
+            mode="lines+markers",
+            line=dict(color="#FF4136", width=3),
+            marker=dict(size=8)
+        )
+    )
+    
+    fig.add_shape(
+        type="line",
+        x0=-0.5,
+        x1=len(counts) - 0.5,
+        y0=80,
+        y1=80,
+        yref="y2",
+        line=dict(color="#FF851B", width=2, dash="dash")
+    )
+    
+    fig.update_layout(
+        title=dict(text=titulo, font=dict(size=16)),
+        xaxis=dict(title=""),
+        yaxis=dict(title="Número de Chamados", showgrid=True),
+        yaxis2=dict(
+            title="% Acumulado",
+            overlaying="y",
+            side="right",
+            range=[0, 105],
+            showgrid=False
+        ),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        margin=dict(l=20, r=20, t=50, b=20),
+        height=420
+    )
+    
+    return fig
+
+# MODULO 3: DASHBOARD & SLA
 elif menu == "Dashboard & SLA":
     st.title("📊 Painel Gerencial & Indicadores de SLA")
 
@@ -175,7 +243,6 @@ elif menu == "Dashboard & SLA":
         ).dt.total_seconds() / 3600.0
         df_concluidos = df_concluidos[df_concluidos["Tempo_Resolucao_Horas"] >= 0]
 
-        # Metas de SLA oficiais: Alta 4h / Média 8h / Baixa 78h
         METAS_SLA = {"alta": 4.0, "media": 8.0, "baixa": 78.0}
 
         def get_sla_target(prioridade):
@@ -255,50 +322,46 @@ elif menu == "Dashboard & SLA":
 
     st.markdown("---")
 
-    # RESTANTE: ORGANIZADO EM ABAS
+    # RESTANTE: ORGANIZADO EM ABAS COM GRÁFICOS PARETO INTERATIVOS
     aba_geral, aba_equipe, aba_detalhe = st.tabs(
-        ["📈 Volume & Tendência", "👷 Equipe & Equipamentos", "🔍 Fora do SLA"]
+        ["📈 Análise de Pareto & Volume", "👷 Equipe & Reincidência", "🔍 Fora do SLA"]
     )
 
     with aba_geral:
-        col_m1, col_m2 = st.columns(2)
-        with col_m1:
-            st.markdown("**Chamados por Setor / Área**")
-            if "Área do chamado" in df_calc.columns:
-                st.bar_chart(df_calc["Área do chamado"].value_counts())
-        with col_m2:
-            st.markdown("**Distribuição por Prioridade**")
-            if "Prioridade" in df_calc.columns:
-                st.bar_chart(df_calc["Prioridade"].value_counts())
+        fig_setor = criar_grafico_pareto(df_calc, "Área do chamado", "Diagrama de Pareto: Chamados por Setor (Regra 80/20)")
+        if fig_setor:
+            st.plotly_chart(fig_setor, use_container_width=True)
 
+        st.markdown("---")
         st.markdown("**Evolução Diária de Chamados Criados**")
         df_tempo = df_calc.dropna(subset=["Carimbo de data/hora"]).copy()
         if not df_tempo.empty:
             df_tempo["Data_Dia"] = df_tempo["Carimbo de data/hora"].dt.date
-            evolucao = df_tempo.groupby("Data_Dia").size()
-            st.line_chart(evolucao)
+            evolucao = df_tempo.groupby("Data_Dia").size().reset_index(name="Volume")
+            fig_evol = px.line(evolucao, x="Data_Dia", y="Volume", markers=True, title="Tendência Temporal de Abertura")
+            fig_evol.update_traces(line_color="#2CA02C", line_width=3)
+            fig_evol.update_layout(height=350, margin=dict(l=20, r=20, t=40, b=20), xaxis_title="Data", yaxis_title="Qtd Chamados")
+            st.plotly_chart(fig_evol, use_container_width=True)
 
     with aba_equipe:
-        col_e1, col_e2 = st.columns(2)
-        with col_e1:
-            st.markdown("**Top Equipamentos e Locais com Chamados**")
-            if "Equipamento/Sistema/Local" in df_calc.columns:
-                top_eq = df_calc["Equipamento/Sistema/Local"].value_counts().head(10)
-                st.bar_chart(top_eq)
-        with col_e2:
-            st.markdown("**Desempenho da Equipe Técnica**")
-            if "Técnico Responsável" in df_calc.columns and not df_concluidos.empty:
-                tec_stats = df_concluidos.groupby("Técnico Responsável").agg(
-                    Atendidos=("Nº Chamado", "count"),
-                    Tempo_Medio_Horas=("Tempo_Resolucao_Horas", "mean"),
-                    SLA_OK_Pct=("SLA_Cumprido", lambda x: (x.sum() / len(x)) * 100),
-                ).reset_index()
-                tec_stats["Tempo_Medio_Horas"] = tec_stats["Tempo_Medio_Horas"].round(1)
-                tec_stats["SLA_OK_Pct"] = tec_stats["SLA_OK_Pct"].round(1)
-                tec_stats.rename(columns={"Tempo_Medio_Horas": "TMR Médio (h)", "SLA_OK_Pct": "SLA OK (%)"}, inplace=True)
-                st.dataframe(tec_stats, use_container_width=True, hide_index=True)
-            else:
-                st.caption("Aguardando finalização de chamados para consolidação de métricas por técnico.")
+        fig_equip = criar_grafico_pareto(df_calc, "Equipamento/Sistema/Local", "Diagrama de Pareto: Equipamentos Críticos (Regra 80/20)")
+        if fig_equip:
+            st.plotly_chart(fig_equip, use_container_width=True)
+
+        st.markdown("---")
+        st.markdown("**Desempenho da Equipe Técnica**")
+        if "Técnico Responsável" in df_calc.columns and not df_concluidos.empty:
+            tec_stats = df_concluidos.groupby("Técnico Responsável").agg(
+                Atendidos=("Nº Chamado", "count"),
+                Tempo_Medio_Horas=("Tempo_Resolucao_Horas", "mean"),
+                SLA_OK_Pct=("SLA_Cumprido", lambda x: (x.sum() / len(x)) * 100),
+            ).reset_index()
+            tec_stats["Tempo_Medio_Horas"] = tec_stats["Tempo_Medio_Horas"].round(1)
+            tec_stats["SLA_OK_Pct"] = tec_stats["SLA_OK_Pct"].round(1)
+            tec_stats.rename(columns={"Tempo_Medio_Horas": "TMR Médio (h)", "SLA_OK_Pct": "SLA OK (%)"}, inplace=True)
+            st.dataframe(tec_stats, use_container_width=True, hide_index=True)
+        else:
+            st.caption("Aguardando finalização de chamados para consolidação de métricas por técnico.")
 
     with aba_detalhe:
         st.markdown("**Chamados que estouraram a meta de SLA**")
