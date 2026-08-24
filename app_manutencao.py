@@ -2,36 +2,36 @@
 import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
-from google.auth.transport.requests import Request
-import requests
 from datetime import datetime
 import pytz
-import re
-import io
 import plotly.graph_objects as go
 import plotly.express as px
 
 # Configuração da página
 st.set_page_config(page_title="Gestão de Manutenção", page_icon="🛠️", layout="wide")
 
-# Estilo Escuro Fixo (Midnight Slate - Alto Contraste)
+# CSS: Design System Escuro, Futurista e de Alto Contraste (Eye-Care)
 st.markdown("""
     <style>
+    /* Oculta elementos nativos do Streamlit */
     #MainMenu {visibility: hidden;}
     header {visibility: hidden;}
     footer {visibility: hidden;}
 
+    /* Fundo escuro profundo e tipografia clara */
     .stApp {
         background-color: #0F172A;
         color: #F8FAFC;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     }
 
+    /* Títulos e cabeçalhos */
     h1, h2, h3, h4, h5, h6, label {
         color: #F8FAFC !important;
         font-weight: 700 !important;
     }
 
+    /* Cartões de métricas (KPIs) com estilo futurista */
     div[data-testid="stMetric"] {
         background-color: #1E293B;
         border: 1px solid #334155;
@@ -52,6 +52,7 @@ st.markdown("""
         font-weight: 800 !important;
     }
 
+    /* Estilização de campos de entrada (Inputs/Selects) */
     .stTextInput > div > div > input, 
     .stSelectbox > div > div, 
     .stTextArea textarea {
@@ -61,43 +62,24 @@ st.markdown("""
         border-radius: 8px !important;
     }
 
+    /* Sidebar escura */
     section[data-testid="stSidebar"] {
         background-color: #0B0F19;
         border-right: 1px solid #1E293B;
     }
 
+    /* Divisores e linhas */
     hr {
         border-color: #334155 !important;
         margin: 1.5rem 0 !important;
     }
 
+    /* Tabelas em modo escuro */
     div[data-testid="stDataFrame"] {
         background-color: #1E293B;
         border: 1px solid #334155;
         border-radius: 12px;
         padding: 8px;
-    }
-
-    .badge-prioridade-alta {
-        background-color: #7F1D1D;
-        color: #FECACA;
-        padding: 4px 8px;
-        border-radius: 6px;
-        font-weight: bold;
-    }
-    .badge-prioridade-media {
-        background-color: #78350F;
-        color: #FDE68A;
-        padding: 4px 8px;
-        border-radius: 6px;
-        font-weight: bold;
-    }
-    .badge-prioridade-baixa {
-        background-color: #064E3B;
-        color: #A7F3D0;
-        padding: 4px 8px;
-        border-radius: 6px;
-        font-weight: bold;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -115,44 +97,14 @@ def get_gspread_client():
         creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
         
     creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
-    return creds, gspread.authorize(creds)
+    return gspread.authorize(creds)
 
 def load_data():
-    creds, client = get_gspread_client()
+    client = get_gspread_client()
     sheet = client.open_by_url(st.secrets["spreadsheet"]["url"]).worksheet("CHAMADOS")
     data = sheet.get_all_records()
     df = pd.DataFrame(data)
-    return creds, sheet, df
-
-# Validação de e-mail por regex
-def validar_email(email):
-    padrao = r"^[\w\.-]+@[\w\.-]+\.\w+$"
-    return re.match(padrao, email) is not None
-
-# Upload de anexo para o Google Drive
-def upload_para_drive(creds, file_obj):
-    try:
-        if not creds.valid:
-            creds.refresh(Request())
-        access_token = creds.token
-        
-        metadata = {"name": file_obj.name}
-        files = {
-            'data': ('metadata', str(metadata).encode('utf-8'), 'application/json; charset=UTF-8'),
-            'file': (file_obj.name, file_obj.getvalue(), file_obj.type)
-        }
-        headers = {"Authorization": f"Bearer {access_token}"}
-        r = requests.post(
-            "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
-            headers=headers,
-            files=files
-        )
-        if r.status_code == 200:
-            file_id = r.json().get("id")
-            return f"https://drive.google.com/file/d/{file_id}/view"
-        return f"Arquivo carregado: {file_obj.name}"
-    except Exception:
-        return f"Anexo registrado: {file_obj.name}"
+    return sheet, df
 
 # Formatador de tempo amigável
 def formatar_tempo_legivel(horas):
@@ -190,6 +142,7 @@ def criar_grafico_pareto_limpo(df_input, coluna, titulo, top_n=10):
     counts['Percentual_Acumulado'] = (counts['Acumulado'] / total) * 100 if total > 0 else 0
     
     fig = go.Figure()
+    
     fig.add_trace(
         go.Bar(
             x=counts[coluna],
@@ -201,6 +154,7 @@ def criar_grafico_pareto_limpo(df_input, coluna, titulo, top_n=10):
             textfont=dict(size=12, color="#F8FAFC")
         )
     )
+    
     fig.add_trace(
         go.Scatter(
             x=counts[coluna],
@@ -212,6 +166,7 @@ def criar_grafico_pareto_limpo(df_input, coluna, titulo, top_n=10):
             marker=dict(size=8, color="#F43F5E")
         )
     )
+    
     fig.add_hline(
         y=80,
         yref="y2",
@@ -219,6 +174,7 @@ def criar_grafico_pareto_limpo(df_input, coluna, titulo, top_n=10):
         line_color="#FBBF24",
         line_width=2
     )
+    
     fig.update_layout(
         template="plotly_dark",
         title=dict(text=f"<b>{titulo}</b>", font=dict(size=16, color="#F8FAFC")),
@@ -243,10 +199,11 @@ def criar_grafico_pareto_limpo(df_input, coluna, titulo, top_n=10):
         paper_bgcolor="#1E293B",
         plot_bgcolor="#1E293B"
     )
+    
     return fig
 
 try:
-    creds, sheet, df = load_data()
+    sheet, df = load_data()
 except Exception as e:
     st.error(f"Erro ao conectar com a planilha: {e}")
     st.stop()
@@ -260,105 +217,65 @@ SENHA_CORRETA = st.secrets.get("SENHA_GESTAO", "manutencao123")
 if menu == "Gestão Operacional":
     st.sidebar.markdown("---")
     senha_digitada = st.sidebar.text_input("Chave de Acesso Operacional", type="password")
+    
     if senha_digitada != SENHA_CORRETA:
         st.warning("🔒 Área restrita à equipe de manutenção. Insira a chave de acesso na barra lateral para continuar.")
         st.stop()
-    st.sidebar.success("Sessão ativa: Técnico Autenticado")
 
 # MODULO 1: ABERTURA DE CHAMADO
 if menu == "Abrir Chamado":
     st.title("📌 Abertura de Chamado de Manutenção")
     
-    proximo_num = len(df) + 1
-    st.info(f"🆔 **Pré-visualização do Número do Chamado:** #{proximo_num}")
-
-    with st.form("form_abertura", clear_on_submit=False):
+    with st.form("form_abertura", clear_on_submit=True):
         col1, col2 = st.columns(2)
         with col1:
-            nome_setor = st.text_input("Nome e Setor Solicitante *", placeholder="Ex: Guilherme (Surfaçagem)")
-            email = st.text_input("E-mail para Notificação *", placeholder="exemplo@empresa.com.br")
+            nome_setor = st.text_input("Nome e Setor Solicitante", placeholder="Ex: Guilherme (Surfaçagem)")
+            email = st.text_input("E-mail para Notificação")
             area = st.selectbox("Área do Chamado", ["Surfaçagem", "AR", "Montagem", "Estoque", "Expedição", "Atendimento", "TI", "Diretoria", "Geral"])
-            equipamento = st.text_input("Equipamento / Sistema / Local *", placeholder="Ex: Satisloh SL-501")
+            equipamento = st.text_input("Equipamento / Sistema / Local", placeholder="Ex: Satisloh SL-501")
         
         with col2:
             impacto = st.selectbox("Impacto na Operação", ["Parada total", "Parada parcial", "Sem impacto"])
             prioridade = st.selectbox("Prioridade Sugerida", ["Alta", "Média", "Baixa"])
-            arquivo_anexo = st.file_uploader("Anexar Foto ou Documento (Opcional)", type=["png", "jpg", "jpeg", "pdf"])
+            info_adicional = st.text_input("Link de Foto/Anexo (opcional)")
 
-        problema = st.text_input("Qual é o problema? *", placeholder="Resumo em uma frase")
+        problema = st.text_input("Qual é o problema?", placeholder="Resumo em uma frase")
         observado = st.text_area("O que foi observado?", placeholder="Detalhes do comportamento do equipamento")
         testado = st.text_area("O que já foi feito/testado?", placeholder="Ações iniciais tentadas antes do chamado")
 
-        st.markdown("---")
-        submitted = st.form_submit_button("🚀 Enviar Chamado de Manutenção", use_container_width=True)
+        submitted = st.form_submit_button("Enviar Chamado")
 
         if submitted:
-            if not nome_setor or not email or not problema or not equipamento:
-                st.error("⚠️ Preencha todos os campos obrigatórios assinalados com (*).")
-            elif not validar_email(email):
-                st.error("⚠️ O e-mail informado é inválido. Verifique o formato inserido.")
+            if not nome_setor or not problema or not equipamento:
+                st.warning("Por favor, preencha os campos obrigatórios.")
             else:
                 fuso_br = pytz.timezone("America/Sao_Paulo")
                 agora = datetime.now(fuso_br).strftime("%d/%m/%Y %H:%M:%S")
-
-                link_anexo = ""
-                if arquivo_anexo is not None:
-                    with st.spinner("Enviando anexo para o repositório..."):
-                        link_anexo = upload_para_drive(creds, arquivo_anexo)
+                proximo_num = len(df) + 1
 
                 nova_linha = [
                     proximo_num, agora, email, nome_setor, area, equipamento,
                     problema, observado, testado, impacto, prioridade,
-                    link_anexo, "Aberto", "", "", ""
+                    info_adicional, "Pendente", "", "", ""
                 ]
 
                 sheet.append_row(nova_linha)
+                st.success(f"Chamado Nº {proximo_num} registrado com sucesso!")
                 st.cache_resource.clear()
-
-                st.success(f"✅ **Chamado #{proximo_num} aberto com sucesso!**")
-                st.markdown(f"""
-                <div style="background-color:#1E293B; border:1px solid #38BDF8; padding:20px; border-radius:12px; margin-top:10px;">
-                    <h4 style="color:#38BDF8; margin:0 0 10px 0;">Resumo da Solicitação</h4>
-                    <p><b>Número:</b> #{proximo_num}</p>
-                    <p><b>Solicitante:</b> {nome_setor} ({email})</p>
-                    <p><b>Equipamento:</b> {equipamento} ({area})</p>
-                    <p><b>Problema:</b> {problema}</p>
-                    <p><b>Prioridade/Impacto:</b> {prioridade} / {impacto}</p>
-                </div>
-                """, unsafe_allow_html=True)
 
 # MODULO 2: GESTÃO OPERACIONAL
 elif menu == "Gestão Operacional":
     st.title("⚙️ Gestão Operacional de Chamados")
     
-    lista_status = ["Aberto", "Em análise", "Em execução", "Aguardando peça", "Concluído", "Cancelado"]
+    status_filtro = st.multiselect("Filtrar por Status", ["Pendente", "Atuando", "Concluído"], default=["Pendente", "Atuando"])
     
-    col_f1, col_f2, col_f3 = st.columns(3)
-    with col_f1:
-        status_filtro = st.multiselect("Filtrar por Status", lista_status, default=["Aberto", "Em análise", "Em execução", "Aguardando peça"])
-    with col_f2:
-        areas_disponiveis = list(df["Área do chamado"].astype(str).unique()) if "Área do chamado" in df.columns else []
-        area_filtro = st.multiselect("Filtrar por Área", areas_disponiveis)
-    with col_f3:
-        prio_filtro = st.multiselect("Filtrar por Prioridade", ["Alta", "Média", "Baixa"])
-
-    df_filtrado = df.copy()
-    if status_filtro:
-        df_filtrado = df_filtrado[df_filtrado["Status"].isin(status_filtro)]
-    if area_filtro:
-        df_filtrado = df_filtrado[df_filtrado["Área do chamado"].isin(area_filtro)]
-    if prio_filtro:
-        df_filtrado = df_filtrado[df_filtrado["Prioridade"].isin(prio_filtro)]
-
-    colunas_visiveis = [c for c in ["Nº Chamado", "Carimbo de data/hora", "Área do chamado", "Equipamento/Sistema/Local", "Prioridade", "Impacto na operação", "Status", "Técnico Responsável"] if c in df_filtrado.columns]
+    df_filtrado = df[df["Status"].isin(status_filtro)] if status_filtro else df
+    
+    colunas_visiveis = [c for c in ["Nº Chamado", "Carimbo de data/hora", "Área do chamado", "Equipamento/Sistema/Local", "Prioridade", "Status", "Técnico Responsável"] if c in df_filtrado.columns]
     st.dataframe(df_filtrado[colunas_visiveis], use_container_width=True)
 
-    # Exportação de relatório
-    csv_data = df_filtrado.to_csv(index=False).encode('utf-8')
-    st.download_button("📥 Exportar Chamados Filtrados (CSV)", data=csv_data, file_name="relatorio_chamados.csv", mime="text/csv")
-
     st.markdown("---")
-    st.subheader("Atualizar e Processar Chamado")
+    st.subheader("Atualizar Status de Chamado")
 
     num_chamado = st.number_input("Informe o Nº do Chamado para atualizar", min_value=1, step=1)
     
@@ -366,47 +283,35 @@ elif menu == "Gestão Operacional":
         idx_linha = df[df["Nº Chamado"] == num_chamado].index[0]
         linha_atual = df.iloc[idx_linha]
 
-        st.info(f"**Chamado #{num_chamado}:** {linha_atual.get('Equipamento/Sistema/Local', '')} | **Solicitante:** {linha_atual.get('Nome e Setor Solicitante', '')}")
-        st.write(f"**Problema:** {linha_atual.get('Qual é o problema?', '')}")
+        st.info(f"Chamado {num_chamado}: {linha_atual.get('Equipamento/Sistema/Local', '')} (Problema: {linha_atual.get('Qual é o problema?', '')})")
 
         with st.form("form_atualizacao"):
             col_a, col_b = st.columns(2)
             with col_a:
-                status_atual = str(linha_atual.get("Status", "Aberto")).strip()
-                idx_st = lista_status.index(status_atual) if status_atual in lista_status else 0
-                novo_status = st.selectbox("Status Operacional", lista_status, index=idx_st)
+                status_atual = str(linha_atual.get("Status", "Pendente"))
+                opcoes_status = ["Pendente", "Atuando", "Concluído"]
+                idx_st = opcoes_status.index(status_atual) if status_atual in opcoes_status else 0
+                novo_status = st.selectbox("Status", opcoes_status, index=idx_st)
                 
-                nova_prio = st.selectbox("Ajustar Prioridade", ["Alta", "Média", "Baixa"], index=["Alta", "Média", "Baixa"].index(str(linha_atual.get("Prioridade", "Média"))) if str(linha_atual.get("Prioridade", "Média")) in ["Alta", "Média", "Baixa"] else 1)
-                novo_impacto = st.selectbox("Ajustar Impacto", ["Parada total", "Parada parcial", "Sem impacto"], index=["Parada total", "Parada parcial", "Sem impacto"].index(str(linha_atual.get("Impacto na operação", "Sem impacto"))) if str(linha_atual.get("Impacto na operação", "Sem impacto")) in ["Parada total", "Parada parcial", "Sem impacto"] else 2)
-
-            with col_b:
                 tec_atual = str(linha_atual.get("Técnico Responsável", "Eric"))
                 opcoes_tec = ["Eric", "Felipe", "Outro"]
                 idx_tec = opcoes_tec.index(tec_atual) if tec_atual in opcoes_tec else 0
                 tecnico = st.selectbox("Técnico Responsável", opcoes_tec, index=idx_tec)
+            
+            with col_b:
+                obs_interna = st.text_area("Observação Interna / Diagnóstico", value=str(linha_atual.get("Observação Interna", "")))
 
-                obs_interna = st.text_area("Histórico / Diagnóstico Técnico", value=str(linha_atual.get("Observação Interna", "")))
-
-            btn_salvar = st.form_submit_button("Salvar Alterações do Chamado")
+            btn_salvar = st.form_submit_button("Salvar Alterações")
 
             if btn_salvar:
                 linha_excel = idx_linha + 2
-                
-                sheet.update_cell(linha_excel, 10, novo_impacto)
-                sheet.update_cell(linha_excel, 11, nova_prio)
                 sheet.update_cell(linha_excel, 13, novo_status)
                 sheet.update_cell(linha_excel, 14, tecnico)
-                
-                if novo_status == "Concluído":
-                    fuso_br = pytz.timezone("America/Sao_Paulo")
-                    agora_conc = datetime.now(fuso_br).strftime("%d/%m/%Y %H:%M:%S")
-                    sheet.update_cell(linha_excel, 15, agora_conc)
-                
                 sheet.update_cell(linha_excel, 16, obs_interna)
-                st.success(f"Chamado #{num_chamado} atualizado para '{novo_status}' com sucesso!")
+                st.success(f"Chamado {num_chamado} atualizado com sucesso!")
                 st.cache_resource.clear()
 
-# MODULO 3: DASHBOARD & SLA
+# MODULO 3: DASHBOARD FUTURISTA DE ALTO CONTRASTE
 elif menu == "Dashboard & SLA":
     st.title("📊 Painel Gerencial & Indicadores de SLA")
 
@@ -417,26 +322,29 @@ elif menu == "Dashboard & SLA":
     fuso_br = pytz.timezone("America/Sao_Paulo")
     agora_br = datetime.now(fuso_br)
 
+    total_chamados = len(df)
+    em_aberto = len(df[df["Status"].astype(str).str.strip().isin(["Pendente", "Atuando"])])
+
     df_calc = df.copy()
+    
     df_calc["dt_abertura"] = pd.to_datetime(df_calc["Carimbo de data/hora"].astype(str), errors="coerce", dayfirst=True)
     df_calc["dt_conclusao"] = pd.to_datetime(df_calc["Data de conclusão"].astype(str), errors="coerce", dayfirst=True)
 
-    # Filtro Temporal de Período
-    st.sidebar.markdown("---")
-    filtro_periodo = st.sidebar.selectbox("Período do Dashboard", ["Tudo", "Últimos 7 dias", "Últimos 30 dias", "Últimos 90 dias"])
-
+    df_temp_validos = df_calc.dropna(subset=["dt_abertura"]).copy()
+    
     agora_naive = agora_br.replace(tzinfo=None)
-    if filtro_periodo == "Últimos 7 dias":
-        df_calc = df_calc[df_calc["dt_abertura"] >= (agora_naive - pd.Timedelta(days=7))]
-    elif filtro_periodo == "Últimos 30 dias":
-        df_calc = df_calc[df_calc["dt_abertura"] >= (agora_naive - pd.Timedelta(days=30))]
-    elif filtro_periodo == "Últimos 90 dias":
-        df_calc = df_calc[df_calc["dt_abertura"] >= (agora_naive - pd.Timedelta(days=90))]
+    inicio_hoje = agora_naive.replace(hour=0, minute=0, second=0, microsecond=0)
+    inicio_semana = inicio_hoje - pd.Timedelta(days=agora_naive.weekday())
+    inicio_mes = agora_naive.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    inicio_ano = agora_naive.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
 
-    total_chamados = len(df_calc)
-    em_aberto = len(df_calc[df_calc["Status"].astype(str).str.strip().isin(["Aberto", "Em análise", "Em execução", "Aguardando peça", "Pendente", "Atuando"])])
+    qtd_hoje = len(df_temp_validos[df_temp_validos["dt_abertura"] >= inicio_hoje])
+    qtd_semana = len(df_temp_validos[df_temp_validos["dt_abertura"] >= inicio_semana])
+    qtd_mes = len(df_temp_validos[df_temp_validos["dt_abertura"] >= inicio_mes])
+    qtd_ano = len(df_temp_validos[df_temp_validos["dt_abertura"] >= inicio_ano])
 
     METAS_SLA = {"alta": 4.0, "media": 8.0, "baixa": 78.0}
+
     def get_sla_target(prioridade):
         p = str(prioridade).strip().lower().replace("é", "e")
         for chave, meta in METAS_SLA.items():
@@ -445,24 +353,6 @@ elif menu == "Dashboard & SLA":
         return 8.0
 
     df_calc["Meta_SLA_Horas"] = df_calc["Prioridade"].apply(get_sla_target)
-
-    # Avaliação de Atrasos
-    chamados_em_atraso = 0
-    for _, row in df_calc.iterrows():
-        st_str = str(row.get("Status", "Aberto")).strip()
-        dt_ab = row.get("dt_abertura")
-        dt_conc = row.get("dt_conclusao")
-        meta = row.get("Meta_SLA_Horas", 8.0)
-        
-        if pd.isna(dt_ab):
-            continue
-            
-        if st_str == "Concluído":
-            if pd.notna(dt_conc) and ((dt_conc - dt_ab).total_seconds() / 3600.0) > meta:
-                chamados_em_atraso += 1
-        elif st_str != "Cancelado":
-            if ((agora_naive - dt_ab).total_seconds() / 3600.0) > meta:
-                chamados_em_atraso += 1
 
     df_concluidos = df_calc.dropna(subset=["dt_conclusao", "dt_abertura"]).copy()
     if not df_concluidos.empty:
@@ -473,58 +363,130 @@ elif menu == "Dashboard & SLA":
         df_concluidos["SLA_Cumprido"] = df_concluidos["Tempo_Resolucao_Horas"] <= df_concluidos["Meta_SLA_Horas"]
         
         df_tmr_operacional = df_concluidos[df_concluidos["Tempo_Resolucao_Horas"] <= 720]
-        tmr_geral_num = df_tmr_operacional["Tempo_Resolucao_Horas"].mean() if not df_tmr_operacional.empty else df_concluidos["Tempo_Resolucao_Horas"].median()
+        if not df_tmr_operacional.empty:
+            tmr_geral_num = df_tmr_operacional["Tempo_Resolucao_Horas"].mean()
+        else:
+            tmr_geral_num = df_concluidos["Tempo_Resolucao_Horas"].median()
     else:
         df_concluidos["Tempo_Resolucao_Horas"] = []
         df_concluidos["SLA_Cumprido"] = []
         tmr_geral_num = 0.0
 
     total_concluidos = len(df_concluidos)
-    sla_cumprido_pct = ((df_concluidos["SLA_Cumprido"].sum() / total_concluidos) * 100) if total_concluidos > 0 else 100.0
+    taxa_conclusao = (total_concluidos / total_chamados * 100) if total_chamados > 0 else 0.0
+    sla_cumprido_pct = (
+        (df_concluidos["SLA_Cumprido"].sum() / total_concluidos * 100) if total_concluidos > 0 else 100.0
+    )
 
-    # LINHA 1: KPIs Solicitados
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Chamados Abertos / Ativos", em_aberto)
-    c2.metric("Fora do SLA (Em Atraso)", chamados_em_atraso)
-    c3.metric("Tempo Médio (TMR)", formatar_tempo_legivel(tmr_geral_num))
-    c4.metric("% Dentro do SLA", f"{sla_cumprido_pct:.0f}%")
-
-    st.markdown("---")
-
-    # LINHA 2: Gráficos de Distribuição
-    col_g1, col_g2, col_g3 = st.columns(3)
-    
-    with col_g1:
-        if "Área do chamado" in df_calc.columns and not df_calc.empty:
-            fig_area = px.pie(df_calc, names="Área do chamado", title="<b>Chamados por Área</b>", hole=0.4, template="plotly_dark")
-            fig_area.update_layout(height=350, paper_bgcolor="#1E293B", plot_bgcolor="#1E293B")
-            st.plotly_chart(fig_area, use_container_width=True)
-
-    with col_g2:
-        if "Prioridade" in df_calc.columns and not df_calc.empty:
-            fig_prio = px.bar(df_calc["Prioridade"].value_counts().reset_index(), x="Prioridade", y="count", title="<b>Distribuição de Prioridade</b>", text="count", template="plotly_dark")
-            fig_prio.update_traces(marker_color="#38BDF8", textposition="outside")
-            fig_prio.update_layout(height=350, paper_bgcolor="#1E293B", plot_bgcolor="#1E293B")
-            st.plotly_chart(fig_prio, use_container_width=True)
-
-    with col_g3:
-        if not df_concluidos.empty and "Impacto na operação" in df_concluidos.columns:
-            tmr_impacto = df_concluidos.groupby("Impacto na operação")["Tempo_Resolucao_Horas"].mean().reset_index()
-            fig_imp = px.bar(tmr_impacto, x="Impacto na operação", y="Tempo_Resolucao_Horas", title="<b>Tempo Médio por Impacto (h)</b>", text_auto=".1f", template="plotly_dark")
-            fig_imp.update_traces(marker_color="#F43F5E", textposition="outside")
-            fig_imp.update_layout(height=350, paper_bgcolor="#1E293B", plot_bgcolor="#1E293B")
-            st.plotly_chart(fig_imp, use_container_width=True)
+    # LINHA 1: KPIs Globais
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("Total Chamados", total_chamados)
+    c2.metric("Em Aberto", em_aberto)
+    c3.metric("Taxa Resolução", f"{taxa_conclusao:.0f}%")
+    c4.metric("Tempo Médio (TMR)", formatar_tempo_legivel(tmr_geral_num))
+    c5.metric("Conformidade SLA", f"{sla_cumprido_pct:.0f}%")
 
     st.markdown("---")
 
-    # LINHA 3: Pareto Equipamentos
+    # LINHA 2: Volumetria por Período
+    st.markdown("##### 📅 Volumetria por Período de Abertura")
+    ct1, ct2, ct3, ct4 = st.columns(4)
+    ct1.metric("Hoje", qtd_hoje)
+    ct2.metric("Esta Semana", qtd_semana)
+    ct3.metric("Este Mês", qtd_mes)
+    ct4.metric("Este Ano", qtd_ano)
+
+    st.markdown("---")
+
+    # LINHA 3: Cartões de SLA por Prioridade
+    st.markdown("##### 🎯 Cumprimento de SLA por Prioridade")
+
+    def cartao_prioridade_neon(col, nome, meta_horas):
+        subset = df_concluidos[
+            df_concluidos["Prioridade"].astype(str).str.lower().str.replace("é", "e", regex=False).str.contains(nome.lower())
+        ]
+        total = len(subset)
+        cumpridos = int(subset["SLA_Cumprido"].sum()) if total else 0
+        estourados = total - cumpridos
+        pct = (cumpridos / total * 100) if total else 100.0
+        
+        subset_tmr = subset[subset["Tempo_Resolucao_Horas"] <= 720]
+        tmr_num = subset_tmr["Tempo_Resolucao_Horas"].mean() if not subset_tmr.empty else (subset["Tempo_Resolucao_Horas"].median() if total else 0.0)
+
+        if pct >= 90:
+            border_card, text_glow = "#34D399", "#34D399"
+        elif pct >= 70:
+            border_card, text_glow = "#FBBF24", "#FBBF24"
+        else:
+            border_card, text_glow = "#F87171", "#F87171"
+
+        with col:
+            st.markdown(
+                f"""
+                <div style="background-color:#1E293B; border:1px solid {border_card}; padding:20px; border-radius:12px; box-shadow: 0 0 15px -3px {border_card}33;">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <span style="font-weight:700; color:#F8FAFC; font-size:1rem;">{nome}</span>
+                        <span style="font-size:0.8rem; color:#94A3B8;">Meta: {formatar_tempo_legivel(meta_horas)}</span>
+                    </div>
+                    <div style="font-size:2.2rem; font-weight:800; color:{text_glow}; margin:12px 0 4px 0;">{pct:.0f}%</div>
+                    <div style="font-size:0.85rem; color:#CBD5E1; font-weight:500;">Conformidade operacional</div>
+                    <div style="margin-top:14px; padding-top:12px; border-top:1px solid #334155; font-size:0.8rem; color:#94A3B8; display:flex; justify-content:space-between;">
+                        <span>✅ {cumpridos} OK &nbsp;·&nbsp; 🔴 {estourados} Fora</span>
+                        <span>TMR: <b style="color:#F8FAFC;">{formatar_tempo_legivel(tmr_num)}</b></span>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+    col_alta, col_media, col_baixa = st.columns(3)
+    cartao_prioridade_neon(col_alta, "Alta", 4.0)
+    cartao_prioridade_neon(col_media, "Média", 8.0)
+    cartao_prioridade_neon(col_baixa, "Baixa", 78.0)
+
+    st.markdown("---")
+
+    # LINHA 4: Pareto Equipamentos
     fig_equip = criar_grafico_pareto_limpo(df_calc, "Equipamento/Sistema/Local", "Top Equipamentos Críticos (Pareto 80/20)", top_n=10)
     if fig_equip:
         st.plotly_chart(fig_equip, use_container_width=True)
 
     st.markdown("---")
 
-    # LINHA 4: Tabelas de Desempenho
+    # LINHA 5: Pareto Setores e Evolução Mensal
+    col_p1, col_p2 = st.columns(2)
+    
+    with col_p1:
+        fig_setor = criar_grafico_pareto_limpo(df_calc, "Área do chamado", "Top Setores Solicitantes", top_n=8)
+        if fig_setor:
+            st.plotly_chart(fig_setor, use_container_width=True)
+
+    with col_p2:
+        df_tempo = df_calc.dropna(subset=["dt_abertura"]).copy()
+        df_tempo = df_tempo[df_tempo["dt_abertura"] >= pd.Timestamp("2024-01-01")]
+        
+        if not df_tempo.empty:
+            df_tempo["Ano_Mês"] = df_tempo["dt_abertura"].dt.strftime("%Y-%m")
+            evolucao = df_tempo.groupby("Ano_Mês").size().reset_index(name="Volume")
+            evolucao = evolucao.sort_values("Ano_Mês")
+            
+            fig_evol = px.bar(evolucao, x="Ano_Mês", y="Volume", text="Volume", title="<b>Evolução Mensal de Chamados (2024+)</b>")
+            fig_evol.update_traces(marker_color="#38BDF8", textposition="outside", textfont=dict(size=11, color="#F8FAFC"))
+            fig_evol.update_layout(
+                template="plotly_dark",
+                height=420,
+                title=dict(text="<b>Evolução Mensal de Chamados (2024+)</b>", font=dict(size=15, color="#F8FAFC")),
+                xaxis=dict(title=dict(text="<b>Mês/Ano</b>", font=dict(size=12, color="#94A3B8")), tickfont=dict(size=11, color="#CBD5E1"), showgrid=False),
+                yaxis=dict(title=dict(text="<b>Qtd Chamados</b>", font=dict(size=12, color="#94A3B8")), tickfont=dict(size=11, color="#CBD5E1"), gridcolor="#334155", showgrid=True),
+                margin=dict(l=20, r=20, t=50, b=50),
+                paper_bgcolor="#1E293B",
+                plot_bgcolor="#1E293B"
+            )
+            st.plotly_chart(fig_evol, use_container_width=True)
+
+    st.markdown("---")
+
+    # LINHA 6: Tabelas
     col_t1, col_t2 = st.columns(2)
     
     with col_t1:
@@ -542,13 +504,15 @@ elif menu == "Dashboard & SLA":
                 columns={"TMR Formatado": "TMR Médio", "SLA_OK_Pct": "SLA OK (%)"}
             )
             st.dataframe(tec_exibicao, use_container_width=True, hide_index=True)
+        else:
+            st.caption("Aguardando finalização de chamados para consolidação de métricas.")
 
     with col_t2:
-        st.markdown("##### 🔍 Alertas de Estouro de SLA")
+        st.markdown("##### 🔍 Chamados Fora do SLA (Ativos e Concluídos)")
         
         lista_fora = []
         for _, row in df_calc.iterrows():
-            st_str = str(row.get("Status", "Aberto")).strip()
+            st_str = str(row.get("Status", "Pendente")).strip()
             dt_ab = row.get("dt_abertura")
             dt_conc = row.get("dt_conclusao")
             meta = row.get("Meta_SLA_Horas", 8.0)
@@ -564,38 +528,42 @@ elif menu == "Dashboard & SLA":
                             "Nº Chamado": row.get("Nº Chamado"),
                             "Área": row.get("Área do chamado"),
                             "Equipamento": row.get("Equipamento/Sistema/Local"),
+                            "Prioridade": row.get("Prioridade"),
                             "Status": "Concluído",
-                            "Tempo": formatar_tempo_legivel(tempo),
+                            "Tempo Decorrido": formatar_tempo_legivel(tempo),
                             "Atraso": formatar_tempo_legivel(tempo - meta),
-                            "Atraso_Num": tempo - meta,
+                            "Atraso_Horas_Num": tempo - meta,
                             "Técnico": row.get("Técnico Responsável")
                         })
-            elif st_str != "Cancelado":
+            else:
                 tempo = (agora_naive - dt_ab).total_seconds() / 3600.0
                 if tempo > meta:
                     lista_fora.append({
                         "Nº Chamado": row.get("Nº Chamado"),
                         "Área": row.get("Área do chamado"),
                         "Equipamento": row.get("Equipamento/Sistema/Local"),
-                        "Status": st_str,
-                        "Tempo": formatar_tempo_legivel(tempo),
+                        "Prioridade": row.get("Prioridade"),
+                        "Status": st_str if st_str in ["Pendente", "Atuando"] else "Pendente",
+                        "Tempo Decorrido": formatar_tempo_legivel(tempo),
                         "Atraso": formatar_tempo_legivel(tempo - meta),
-                        "Atraso_Num": tempo - meta,
+                        "Atraso_Horas_Num": tempo - meta,
                         "Técnico": row.get("Técnico Responsável")
                     })
                     
         if lista_fora:
-            df_fora_sla = pd.DataFrame(lista_fora).sort_values("Atraso_Num", ascending=False)
-            df_display = df_fora_sla[["Nº Chamado", "Área", "Equipamento", "Status", "Tempo", "Atraso", "Técnico"]]
+            df_fora_sla = pd.DataFrame(lista_fora).sort_values("Atraso_Horas_Num", ascending=False)
+            df_display = df_fora_sla[["Nº Chamado", "Área", "Equipamento", "Prioridade", "Status", "Tempo Decorrido", "Atraso", "Técnico"]]
             
+            # Formatação de alto contraste para tabela no modo escuro
             def colorir_status_dark(val):
                 v = str(val).strip()
                 if v == "Concluído":
                     return "background-color: #065F46; color: #34D399; font-weight: 700;"
-                elif v in ["Aberto", "Em análise"]:
+                elif v == "Pendente":
                     return "background-color: #78350F; color: #FBBF24; font-weight: 700;"
-                else:
+                elif v == "Atuando":
                     return "background-color: #075985; color: #38BDF8; font-weight: 700;"
+                return ""
             
             styled_df = df_display.style.map(colorir_status_dark, subset=["Status"])
             st.dataframe(styled_df, use_container_width=True, hide_index=True)
