@@ -32,7 +32,7 @@ def load_data():
     df = pd.DataFrame(data)
     return sheet, df
 
-# FUNÇÃO AUXILIAR DE PARETO (Definida no topo para não quebrar a estrutura if/elif)
+# GERADOR DE PARETO EXPANDIDO E DE ALTA VISIBILIDADE
 def criar_grafico_pareto(df_input, coluna, titulo):
     if coluna not in df_input.columns or df_input[coluna].dropna().empty:
         return None
@@ -51,10 +51,11 @@ def criar_grafico_pareto(df_input, coluna, titulo):
         go.Bar(
             x=counts[coluna],
             y=counts['Ocorrências'],
-            name="Ocorrências",
-            marker_color="#1F77B4",
+            name="Qtd Chamados",
+            marker_color="#1D3557",
             text=counts['Ocorrências'],
-            textposition="auto"
+            textposition="outside",
+            textfont=dict(size=15, color="#1D3557")
         )
     )
     
@@ -65,8 +66,8 @@ def criar_grafico_pareto(df_input, coluna, titulo):
             name="% Acumulado (Pareto)",
             yaxis="y2",
             mode="lines+markers",
-            line=dict(color="#FF4136", width=3),
-            marker=dict(size=8)
+            line=dict(color="#E63946", width=4),
+            marker=dict(size=10, color="#E63946")
         )
     )
     
@@ -77,23 +78,27 @@ def criar_grafico_pareto(df_input, coluna, titulo):
         y0=80,
         y1=80,
         yref="y2",
-        line=dict(color="#FF851B", width=2, dash="dash")
+        line=dict(color="#FFB703", width=3, dash="dash")
     )
     
     fig.update_layout(
-        title=dict(text=titulo, font=dict(size=16)),
-        xaxis=dict(title=""),
-        yaxis=dict(title="Número de Chamados", showgrid=True),
+        title=dict(text=f"<b>{titulo}</b>", font=dict(size=20, color="#1D3557")),
+        xaxis=dict(tickfont=dict(size=13, color="#1D3557"), tickangle=-20),
+        yaxis=dict(title="<b>Número de Chamados</b>", titlefont=dict(size=14), tickfont=dict(size=13), showgrid=True),
         yaxis2=dict(
-            title="% Acumulado",
+            title="<b>% Acumulado</b>",
+            titlefont=dict(size=14),
+            tickfont=dict(size=13),
             overlaying="y",
             side="right",
             range=[0, 105],
             showgrid=False
         ),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(l=20, r=20, t=50, b=20),
-        height=420
+        legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1, font=dict(size=13)),
+        margin=dict(l=30, r=30, t=60, b=80),
+        height=520,
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="#F8F9FA"
     )
     
     return fig
@@ -224,7 +229,7 @@ elif menu == "Gestão Operacional":
                 st.success(f"Chamado {num_chamado} atualizado para '{novo_status}'. A planilha formatará a linha e inserirá a data automaticamente.")
                 st.cache_resource.clear()
 
-# MODULO 3: DASHBOARD & SLA
+# MODULO 3: DASHBOARD DE ALTA PERFORMANCE
 elif menu == "Dashboard & SLA":
     st.title("📊 Painel Gerencial & Indicadores de SLA")
 
@@ -233,8 +238,13 @@ elif menu == "Dashboard & SLA":
         st.stop()
 
     df_calc = df.copy()
-    df_calc["Carimbo de data/hora"] = pd.to_datetime(df_calc["Carimbo de data/hora"], errors="coerce")
-    df_calc["Data de conclusão"] = pd.to_datetime(df_calc["Data de conclusão"], errors="coerce")
+    
+    # Tratamento de datas com saneamento de valores anteriores a 2024
+    df_calc["Carimbo de data/hora"] = pd.to_datetime(df_calc["Carimbo de data/hora"], errors="coerce", dayfirst=True)
+    df_calc["Data de conclusão"] = pd.to_datetime(df_calc["Data de conclusão"], errors="coerce", dayfirst=True)
+    
+    # Filtro de corte temporal obriga datas validas a partir de 2024
+    df_calc = df_calc[df_calc["Carimbo de data/hora"] >= pd.Timestamp("2024-01-01")]
 
     df_concluidos = df_calc.dropna(subset=["Data de conclusão"]).copy()
     if not df_concluidos.empty:
@@ -259,7 +269,7 @@ elif menu == "Dashboard & SLA":
         df_concluidos["Meta_SLA_Horas"] = []
         df_concluidos["SLA_Cumprido"] = []
 
-    # LINHA 1: VISÃO GERAL
+    # LINHA 1: RESUMO EXECUTIVO (KPIs)
     total_chamados = len(df_calc)
     em_aberto = len(df_calc[df_calc["Status"].isin(["Pendente", "Atuando"])])
     total_concluidos = len(df_concluidos)
@@ -278,7 +288,7 @@ elif menu == "Dashboard & SLA":
 
     st.markdown("---")
 
-    # LINHA 2: SLA POR PRIORIDADE
+    # LINHA 2: CARTÕES DE SLA POR PRIORIDADE
     st.subheader("🎯 Cumprimento de SLA por Prioridade")
 
     def cartao_prioridade(col, nome, meta_horas, cor_borda):
@@ -322,34 +332,47 @@ elif menu == "Dashboard & SLA":
 
     st.markdown("---")
 
-    # RESTANTE: ORGANIZADO EM ABAS COM GRÁFICOS PARETO INTERATIVOS
-    aba_geral, aba_equipe, aba_detalhe = st.tabs(
-        ["📈 Análise de Pareto & Volume", "👷 Equipe & Reincidência", "🔍 Fora do SLA"]
-    )
+    # LINHA 3: PARETO DE EQUIPAMENTOS (VISÃO AMPLA DE PRIMEIRA PÁGINA)
+    fig_equip = criar_grafico_pareto(df_calc, "Equipamento/Sistema/Local", "Diagrama de Pareto: Equipamentos Críticos (80/20)")
+    if fig_equip:
+        st.plotly_chart(fig_equip, use_container_width=True)
 
-    with aba_geral:
-        fig_setor = criar_grafico_pareto(df_calc, "Área do chamado", "Diagrama de Pareto: Chamados por Setor (Regra 80/20)")
+    st.markdown("---")
+
+    # LINHA 4: PARETO DE SETORES E TENDÊNCIA TEMPORAL (LADO A LADO)
+    col_p1, col_p2 = st.columns(2)
+    
+    with col_p1:
+        fig_setor = criar_grafico_pareto(df_calc, "Área do chamado", "Pareto por Setor Solicitante")
         if fig_setor:
             st.plotly_chart(fig_setor, use_container_width=True)
 
-        st.markdown("---")
-        st.markdown("**Evolução Diária de Chamados Criados**")
+    with col_p2:
         df_tempo = df_calc.dropna(subset=["Carimbo de data/hora"]).copy()
         if not df_tempo.empty:
             df_tempo["Data_Dia"] = df_tempo["Carimbo de data/hora"].dt.date
             evolucao = df_tempo.groupby("Data_Dia").size().reset_index(name="Volume")
-            fig_evol = px.line(evolucao, x="Data_Dia", y="Volume", markers=True, title="Tendência Temporal de Abertura")
-            fig_evol.update_traces(line_color="#2CA02C", line_width=3)
-            fig_evol.update_layout(height=350, margin=dict(l=20, r=20, t=40, b=20), xaxis_title="Data", yaxis_title="Qtd Chamados")
+            
+            fig_evol = px.line(evolucao, x="Data_Dia", y="Volume", markers=True, title="<b>Evolução Diária (2024 - Atual)</b>")
+            fig_evol.update_traces(line_color="#2A9D8F", line_width=4, marker=dict(size=8, color="#E76F51"))
+            fig_evol.update_layout(
+                height=520,
+                title_font=dict(size=20, color="#1D3557"),
+                xaxis=dict(title="<b>Data</b>", tickfont=dict(size=12), showgrid=True),
+                yaxis=dict(title="<b>Qtd Chamados</b>", tickfont=dict(size=12), showgrid=True),
+                margin=dict(l=30, r=30, t=60, b=40),
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="#F8F9FA"
+            )
             st.plotly_chart(fig_evol, use_container_width=True)
 
-    with aba_equipe:
-        fig_equip = criar_grafico_pareto(df_calc, "Equipamento/Sistema/Local", "Diagrama de Pareto: Equipamentos Críticos (Regra 80/20)")
-        if fig_equip:
-            st.plotly_chart(fig_equip, use_container_width=True)
+    st.markdown("---")
 
-        st.markdown("---")
-        st.markdown("**Desempenho da Equipe Técnica**")
+    # LINHA 5: TABELAS DE DESEMPEHO E ESTOURO DE SLA
+    col_t1, col_t2 = st.columns(2)
+    
+    with col_t1:
+        st.markdown("### 👷 Desempenho Técnico")
         if "Técnico Responsável" in df_calc.columns and not df_concluidos.empty:
             tec_stats = df_concluidos.groupby("Técnico Responsável").agg(
                 Atendidos=("Nº Chamado", "count"),
@@ -363,8 +386,8 @@ elif menu == "Dashboard & SLA":
         else:
             st.caption("Aguardando finalização de chamados para consolidação de métricas por técnico.")
 
-    with aba_detalhe:
-        st.markdown("**Chamados que estouraram a meta de SLA**")
+    with col_t2:
+        st.markdown("### 🔍 Chamados Fora do SLA")
         if not df_concluidos.empty:
             fora_sla = df_concluidos[df_concluidos["SLA_Cumprido"] == False].copy()
             if not fora_sla.empty:
@@ -379,6 +402,6 @@ elif menu == "Dashboard & SLA":
                 ]
                 st.dataframe(fora_sla[colunas_sla], use_container_width=True, hide_index=True)
             else:
-                st.success("✅ Operação 100% em conformidade: todos os chamados finalizados respeitaram os prazos estipulados.")
+                st.success("✅ Operação 100% em conformidade: nenhum chamado fora do prazo registrado.")
         else:
             st.info("Nenhum chamado concluído ainda para avaliar.")
