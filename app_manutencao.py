@@ -5,6 +5,7 @@ from google.oauth2.service_account import Credentials
 from datetime import datetime
 import pytz
 import re
+import textwrap
 import plotly.express as px
 import plotly.graph_objects as go
 
@@ -128,7 +129,6 @@ def parse_data_infalivel(val):
     if s.lower() in ["nan", "none", "", "-", "null"]:
         return pd.NaT
     
-    # Regex para extração direta de formato BR
     m_br = re.search(r'(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?', s)
     if m_br:
         d, m, y = int(m_br.group(1)), int(m_br.group(2)), int(m_br.group(3))
@@ -140,7 +140,6 @@ def parse_data_infalivel(val):
         except ValueError:
             pass
 
-    # Regex para extração ISO
     m_iso = re.search(r'(\d{4})[/.-](\d{1,2})[/.-](\d{1,2})(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?', s)
     if m_iso:
         y, m, d = int(m_iso.group(1)), int(m_iso.group(2)), int(m_iso.group(3))
@@ -473,28 +472,26 @@ with tab_dash:
             qtd_atuando = len(sub_ativos[sub_ativos["Status_Clean"] == "Atuando"])
             qtd_pendente = len(sub_ativos[sub_ativos["Status_Clean"] == "Pendente"])
 
-            with col:
-                st.markdown(
-                    f"""
-                    <div style="background-color:#1E293B; border:2px solid {cor_borda}; padding:15px; border-radius:12px; margin-bottom:10px;">
-                        <div style="display:flex; justify-content:space-between; align-items:center;">
-                            <span style="font-weight:800; color:{cor_texto}; font-size:1.1rem;">{nome.upper()}</span>
-                            <span style="font-size:0.8rem; color:#94A3B8; font-weight:600;">Meta: {formatar_tempo_legivel(meta_horas)}</span>
-                        </div>
-                        <div style="font-size:2rem; font-weight:800; color:{cor_texto}; margin:6px 0 2px 0;">{pct:.0f}% <span style="font-size:0.8rem; color:#CBD5E1; font-weight:400;">Conformidade</span></div>
-                        
-                        <div style="margin-top:8px; padding-top:8px; border-top:1px solid #334155; font-size:0.8rem; color:#CBD5E1; display:flex; justify-content:space-between; flex-wrap:wrap; gap:4px;">
-                            <span>🔵 Atuando: <b style="color:#F8FAFC;">{qtd_atuando}</b></span>
-                            <span>🟡 Pendente: <b style="color:#F8FAFC;">{qtd_pendente}</b></span>
-                        </div>
-                        <div style="margin-top:6px; font-size:0.75rem; color:#94A3B8; display:flex; justify-content:space-between;">
-                            <span>✅ {cumpridos} OK · 🔴 {estourados} Fora</span>
-                            <span>TMR: <b style="color:#F8FAFC;">{formatar_tempo_legivel(tmr_num)}</b></span>
-                        </div>
+            html_card = textwrap.dedent(f"""
+                <div style="background-color:#1E293B; border:2px solid {cor_borda}; padding:15px; border-radius:12px; margin-bottom:10px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <span style="font-weight:800; color:{cor_texto}; font-size:1.1rem;">{nome.upper()}</span>
+                        <span style="font-size:0.8rem; color:#94A3B8; font-weight:600;">Meta: {formatar_tempo_legivel(meta_horas)}</span>
                     </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
+                    <div style="font-size:2rem; font-weight:800; color:{cor_texto}; margin:6px 0 2px 0;">{pct:.0f}% <span style="font-size:0.8rem; color:#CBD5E1; font-weight:400;">Conformidade</span></div>
+                    <div style="margin-top:8px; padding-top:8px; border-top:1px solid #334155; font-size:0.8rem; color:#CBD5E1; display:flex; justify-content:space-between; flex-wrap:wrap; gap:4px;">
+                        <span>🔵 Atuando: <b style="color:#F8FAFC;">{qtd_atuando}</b></span>
+                        <span>🟡 Pendente: <b style="color:#F8FAFC;">{qtd_pendente}</b></span>
+                    </div>
+                    <div style="margin-top:6px; font-size:0.75rem; color:#94A3B8; display:flex; justify-content:space-between;">
+                        <span>✅ {cumpridos} OK · 🔴 {estourados} Fora</span>
+                        <span>TMR: <b style="color:#F8FAFC;">{formatar_tempo_legivel(tmr_num)}</b></span>
+                    </div>
+                </div>
+            """).strip()
+
+            with col:
+                st.markdown(html_card, unsafe_allow_html=True)
 
         col_alta, col_media, col_baixa = st.columns(3)
         cartao_prioridade_neon(col_alta, "Alta", 4.0, "#EF4444", "#F87171")
