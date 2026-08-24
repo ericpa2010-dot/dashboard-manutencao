@@ -262,11 +262,10 @@ with tab_dash:
 
         df_calc = df.copy()
         
-        # Tratamento Robusto de Datas
-        df_calc["dt_abertura"] = pd.to_datetime(df_calc["Carimbo de data/hora"].astype(str).str.strip(), errors="coerce", dayfirst=True, format="mixed")
-        df_calc["dt_conclusao"] = pd.to_datetime(df_calc["Data de conclusão"].astype(str).str.strip(), errors="coerce", dayfirst=True, format="mixed")
+        # Tratamento de Datas sem conflito de parametros no Pandas 2.x/Python 3.14
+        df_calc["dt_abertura"] = pd.to_datetime(df_calc["Carimbo de data/hora"].astype(str).str.strip(), errors="coerce", dayfirst=True)
+        df_calc["dt_conclusao"] = pd.to_datetime(df_calc["Data de conclusão"].astype(str).str.strip(), errors="coerce", dayfirst=True)
 
-        # Normalização de Status (tolerante a maiúsculas/minúsculas e espaços)
         df_calc["Status_Clean"] = df_calc["Status"].astype(str).str.strip().str.capitalize()
         
         status_abertos = ["Pendente", "Atuando", "Aberto", "Em andamento"]
@@ -299,7 +298,6 @@ with tab_dash:
 
         df_calc["Meta_SLA_Horas"] = df_calc["Prioridade"].apply(get_sla_target)
 
-        # Cálculo de TMR baseado apenas em chamados concluídos válidos
         df_concluidos = df_calc.dropna(subset=["dt_conclusao", "dt_abertura"]).copy()
         
         if not df_concluidos.empty:
@@ -307,13 +305,11 @@ with tab_dash:
                 df_concluidos["dt_conclusao"] - df_concluidos["dt_abertura"]
             ).dt.total_seconds() / 3600.0
             
-            # Descarta tempos negativos de erro de digitação
             df_concluidos = df_concluidos[df_concluidos["Tempo_Resolucao_Horas"] >= 0]
 
             df_concluidos["Meta_SLA_Horas"] = df_concluidos["Prioridade"].apply(get_sla_target)
             df_concluidos["SLA_Cumprido"] = df_concluidos["Tempo_Resolucao_Horas"] <= df_concluidos["Meta_SLA_Horas"]
 
-            # Para evitar que chamados esquecidos distorçam a operação, usa-se a mediana operacional (<= 30 dias)
             df_tmr_operacional = df_concluidos[df_concluidos["Tempo_Resolucao_Horas"] <= 720]
             if not df_tmr_operacional.empty:
                 tmr_geral_num = df_tmr_operacional["Tempo_Resolucao_Horas"].median()
