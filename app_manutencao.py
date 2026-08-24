@@ -32,15 +32,19 @@ def load_data():
     df = pd.DataFrame(data)
     return sheet, df
 
-# FUNÇÃO DE PARETO TOTALMENTE COMPATÍVEL COM PLOTLY MODERNO
+# FUNÇÃO DE PARETO COMPATÍVEL E VISÍVEL
 def criar_grafico_pareto(df_input, coluna, titulo):
     if coluna not in df_input.columns or df_input[coluna].dropna().empty:
         return None
     
-    counts = df_input[coluna].value_counts().reset_index()
+    counts = df_input[coluna].astype(str).str.strip().value_counts().reset_index()
     counts.columns = [coluna, 'Ocorrências']
+    counts = counts[counts[coluna] != ""]
     counts = counts.sort_values(by='Ocorrências', ascending=False)
     
+    if counts.empty:
+        return None
+        
     counts['Acumulado'] = counts['Ocorrências'].cumsum()
     total = counts['Ocorrências'].sum()
     counts['Percentual_Acumulado'] = (counts['Acumulado'] / total) * 100 if total > 0 else 0
@@ -153,7 +157,7 @@ if menu == "Abrir Chamado":
                 st.warning("Por favor, preencha os campos obrigatórios.")
             else:
                 fuso_br = pytz.timezone("America/Sao_Paulo")
-                agora = datetime.now(fuso_br).strftime("%Y-%m-%d %H:%M:%S")
+                agora = datetime.now(fuso_br).strftime("%d/%m/%Y %H:%M:%S")
                 proximo_num = len(df) + 1
 
                 nova_linha = [
@@ -238,32 +242,19 @@ elif menu == "Dashboard & SLA":
         st.info("Nenhum dado registrado na planilha até o momento.")
         st.stop()
 
+    # Leitura integral sem descarte de registros
+    total_chamados = len(df)
+    em_aberto = len(df[df["Status"].astype(str).str.strip().isin(["Pendente", "Atuando"])])
+
     df_calc = df.copy()
     
-    # Tratamento robusto de datas para evitar exceções de tipos mistos
-    df_calc["Carimbo de data/hora"] = pd.to_datetime(df_calc["Carimbo de data/hora"].astype(str), errors="coerce", dayfirst=True)
-    df_calc["Data de conclusão"] = pd.to_datetime(df_calc["Data de conclusão"].astype(str), errors="coerce", dayfirst=True)
-    
-    # Remoção de fuso horário para comparação direta
-    if hasattr(df_calc["Carimbo de data/hora"].dt, "tz_localize"):
-        try:
-            df_calc["Carimbo de data/hora"] = df_calc["Carimbo de data/hora"].dt.tz_localize(None)
-        except TypeError:
-            pass
+    df_calc["dt_abertura"] = pd.to_datetime(df_calc["Carimbo de data/hora"].astype(str), errors="coerce", dayfirst=True)
+    df_calc["dt_conclusao"] = pd.to_datetime(df_calc["Data de conclusão"].astype(str), errors="coerce", dayfirst=True)
 
-    if hasattr(df_calc["Data de conclusão"].dt, "tz_localize"):
-        try:
-            df_calc["Data de conclusão"] = df_calc["Data de conclusão"].dt.tz_localize(None)
-        except TypeError:
-            pass
-
-    # Corte temporal eliminando registros inconsistentes anteriores a 2024
-    df_calc = df_calc[df_calc["Carimbo de data/hora"] >= pd.Timestamp("2024-01-01")]
-
-    df_concluidos = df_calc.dropna(subset=["Data de conclusão"]).copy()
+    df_concluidos = df_calc.dropna(subset=["dt_conclusao", "dt_abertura"]).copy()
     if not df_concluidos.empty:
         df_concluidos["Tempo_Resolucao_Horas"] = (
-            df_concluidos["Data de conclusão"] - df_concluidos["Carimbo de data/hora"]
+            df_concluidos["dt_conclusao"] - df_concluidos["dt_abertura"]
         ).dt.total_seconds() / 3600.0
         df_concluidos = df_concluidos[df_concluidos["Tempo_Resolucao_Horas"] >= 0]
 
@@ -283,9 +274,6 @@ elif menu == "Dashboard & SLA":
         df_concluidos["Meta_SLA_Horas"] = []
         df_concluidos["SLA_Cumprido"] = []
 
-    # LINHA 1: RESUMO EXECUTIVO (KPIs)
-    total_chamados = len(df_calc)
-    em_aberto = len(df_calc[df_calc["Status"].isin(["Pendente", "Atuando"])])
     total_concluidos = len(df_concluidos)
     taxa_conclusao = (total_concluidos / total_chamados * 100) if total_chamados > 0 else 0.0
     tmr_geral = df_concluidos["Tempo_Resolucao_Horas"].mean() if not df_concluidos.empty else 0.0
@@ -302,7 +290,7 @@ elif menu == "Dashboard & SLA":
 
     st.markdown("---")
 
-    # LINHA 2: CARTÕES DE SLA POR PRIORIDADE
+    # CARTÕES DE SLA POR PRIORIDADE
     st.subheader("🎯 Cumprimento de SLA por Prioridade")
 
     def cartao_prioridade(col, nome, meta_horas, cor_borda):
@@ -346,14 +334,14 @@ elif menu == "Dashboard & SLA":
 
     st.markdown("---")
 
-    # LINHA 3: PARETO DE EQUIPAMENTOS
+    # PARETO DE EQUIPAMENTOS
     fig_equip = criar_grafico_pareto(df_calc, "Equipamento/Sistema/Local", "Diagrama de Pareto: Equipamentos Críticos (80/20)")
     if fig_equip:
         st.plotly_chart(fig_equip, use_container_width=True)
 
     st.markdown("---")
 
-    # LINHA 4: PARETO DE SETORES E TENDÊNCIA TEMPORAL
+    # PARETO DE SETORES E TENDÊNCIA TEMPORAL
     col_p1, col_p2 = st.columns(2)
     
     with col_p1:
@@ -362,16 +350,16 @@ elif menu == "Dashboard & SLA":
             st.plotly_chart(fig_setor, use_container_width=True)
 
     with col_p2:
-        df_tempo = df_calc.dropna(subset=["Carimbo de data/hora"]).copy()
+        df_tempo = df_calc.dropna(subset=["dt_abertura"]).copy()
         if not df_tempo.empty:
-            df_tempo["Data_Dia"] = df_tempo["Carimbo de data/hora"].dt.date
+            df_tempo["Data_Dia"] = df_tempo["dt_abertura"].dt.date
             evolucao = df_tempo.groupby("Data_Dia").size().reset_index(name="Volume")
             
             fig_evol = px.line(evolucao, x="Data_Dia", y="Volume", markers=True)
             fig_evol.update_traces(line_color="#2A9D8F", line_width=4, marker=dict(size=8, color="#E76F51"))
             fig_evol.update_layout(
                 height=500,
-                title=dict(text="<b>Evolução Diária (2024 - Atual)</b>", font=dict(size=18, color="#1D3557")),
+                title=dict(text="<b>Evolução Diária de Chamados</b>", font=dict(size=18, color="#1D3557")),
                 xaxis=dict(title=dict(text="<b>Data</b>", font=dict(size=12)), tickfont=dict(size=12), showgrid=True),
                 yaxis=dict(title=dict(text="<b>Qtd Chamados</b>", font=dict(size=12)), tickfont=dict(size=12), showgrid=True),
                 margin=dict(l=30, r=30, t=60, b=40),
@@ -382,7 +370,7 @@ elif menu == "Dashboard & SLA":
 
     st.markdown("---")
 
-    # LINHA 5: TABELAS DE DESEMPENHO E ESTOURO DE SLA
+    # TABELAS DE DESEMPENHO E ESTOURO DE SLA
     col_t1, col_t2 = st.columns(2)
     
     with col_t1:
