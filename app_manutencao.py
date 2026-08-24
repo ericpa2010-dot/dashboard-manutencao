@@ -32,6 +32,72 @@ def load_data():
     df = pd.DataFrame(data)
     return sheet, df
 
+# FUNÇÃO AUXILIAR DE PARETO (Definida no topo para não quebrar a estrutura if/elif)
+def criar_grafico_pareto(df_input, coluna, titulo):
+    if coluna not in df_input.columns or df_input[coluna].dropna().empty:
+        return None
+    
+    counts = df_input[coluna].value_counts().reset_index()
+    counts.columns = [coluna, 'Ocorrências']
+    counts = counts.sort_values(by='Ocorrências', ascending=False)
+    
+    counts['Acumulado'] = counts['Ocorrências'].cumsum()
+    total = counts['Ocorrências'].sum()
+    counts['Percentual_Acumulado'] = (counts['Acumulado'] / total) * 100 if total > 0 else 0
+    
+    fig = go.Figure()
+    
+    fig.add_trace(
+        go.Bar(
+            x=counts[coluna],
+            y=counts['Ocorrências'],
+            name="Ocorrências",
+            marker_color="#1F77B4",
+            text=counts['Ocorrências'],
+            textposition="auto"
+        )
+    )
+    
+    fig.add_trace(
+        go.Scatter(
+            x=counts[coluna],
+            y=counts['Percentual_Acumulado'],
+            name="% Acumulado (Pareto)",
+            yaxis="y2",
+            mode="lines+markers",
+            line=dict(color="#FF4136", width=3),
+            marker=dict(size=8)
+        )
+    )
+    
+    fig.add_shape(
+        type="line",
+        x0=-0.5,
+        x1=len(counts) - 0.5,
+        y0=80,
+        y1=80,
+        yref="y2",
+        line=dict(color="#FF851B", width=2, dash="dash")
+    )
+    
+    fig.update_layout(
+        title=dict(text=titulo, font=dict(size=16)),
+        xaxis=dict(title=""),
+        yaxis=dict(title="Número de Chamados", showgrid=True),
+        yaxis2=dict(
+            title="% Acumulado",
+            overlaying="y",
+            side="right",
+            range=[0, 105],
+            showgrid=False
+        ),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        margin=dict(l=20, r=20, t=50, b=20),
+        height=420
+    )
+    
+    return fig
+
 try:
     sheet, df = load_data()
 except Exception as e:
@@ -157,72 +223,6 @@ elif menu == "Gestão Operacional":
 
                 st.success(f"Chamado {num_chamado} atualizado para '{novo_status}'. A planilha formatará a linha e inserirá a data automaticamente.")
                 st.cache_resource.clear()
-
-# FUNÇÃO AUXILIAR DE PARETO
-def criar_grafico_pareto(df_input, coluna, titulo):
-    if coluna not in df_input.columns or df_input[coluna].dropna().empty:
-        return None
-    
-    counts = df_input[coluna].value_counts().reset_index()
-    counts.columns = [coluna, 'Ocorrências']
-    counts = counts.sort_values(by='Ocorrências', ascending=False)
-    
-    counts['Acumulado'] = counts['Ocorrências'].cumsum()
-    total = counts['Ocorrências'].sum()
-    counts['Percentual_Acumulado'] = (counts['Acumulado'] / total) * 100 if total > 0 else 0
-    
-    fig = go.Figure()
-    
-    fig.add_trace(
-        go.Bar(
-            x=counts[coluna],
-            y=counts['Ocorrências'],
-            name="Ocorrências",
-            marker_color="#1F77B4",
-            text=counts['Ocorrências'],
-            textposition="auto"
-        )
-    )
-    
-    fig.add_trace(
-        go.Scatter(
-            x=counts[coluna],
-            y=counts['Percentual_Acumulado'],
-            name="% Acumulado (Pareto)",
-            yaxis="y2",
-            mode="lines+markers",
-            line=dict(color="#FF4136", width=3),
-            marker=dict(size=8)
-        )
-    )
-    
-    fig.add_shape(
-        type="line",
-        x0=-0.5,
-        x1=len(counts) - 0.5,
-        y0=80,
-        y1=80,
-        yref="y2",
-        line=dict(color="#FF851B", width=2, dash="dash")
-    )
-    
-    fig.update_layout(
-        title=dict(text=titulo, font=dict(size=16)),
-        xaxis=dict(title=""),
-        yaxis=dict(title="Número de Chamados", showgrid=True),
-        yaxis2=dict(
-            title="% Acumulado",
-            overlaying="y",
-            side="right",
-            range=[0, 105],
-            showgrid=False
-        ),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(l=20, r=20, t=50, b=20),
-        height=420
-    )
-    
-    return fig
 
 # MODULO 3: DASHBOARD & SLA
 elif menu == "Dashboard & SLA":
