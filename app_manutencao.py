@@ -32,7 +32,7 @@ def load_data():
     df = pd.DataFrame(data)
     return sheet, df
 
-# GERADOR DE PARETO EXPANDIDO E DE ALTA VISIBILIDADE
+# FUNÇÃO DE PARETO COMPATÍVEL COM PLOTLY MODERNO
 def criar_grafico_pareto(df_input, coluna, titulo):
     if coluna not in df_input.columns or df_input[coluna].dropna().empty:
         return None
@@ -55,7 +55,7 @@ def criar_grafico_pareto(df_input, coluna, titulo):
             marker_color="#1D3557",
             text=counts['Ocorrências'],
             textposition="outside",
-            textfont=dict(size=15, color="#1D3557")
+            textfont=dict(size=14, color="#1D3557")
         )
     )
     
@@ -71,32 +71,33 @@ def criar_grafico_pareto(df_input, coluna, titulo):
         )
     )
     
-    fig.add_shape(
-        type="line",
-        x0=-0.5,
-        x1=len(counts) - 0.5,
-        y0=80,
-        y1=80,
+    fig.add_hline(
+        y=80,
         yref="y2",
-        line=dict(color="#FFB703", width=3, dash="dash")
+        line_dash="dash",
+        line_color="#FFB703",
+        line_width=3
     )
     
     fig.update_layout(
-        title=dict(text=f"<b>{titulo}</b>", font=dict(size=20, color="#1D3557")),
-        xaxis=dict(tickfont=dict(size=13, color="#1D3557"), tickangle=-20),
-        yaxis=dict(title="<b>Número de Chamados</b>", titlefont=dict(size=14), tickfont=dict(size=13), showgrid=True),
+        title=dict(text=f"<b>{titulo}</b>", font=dict(size=18, color="#1D3557")),
+        xaxis=dict(tickfont=dict(size=12, color="#1D3557"), tickangle=-20),
+        yaxis=dict(
+            title=dict(text="<b>Número de Chamados</b>", font=dict(size=13)),
+            tickfont=dict(size=12),
+            showgrid=True
+        ),
         yaxis2=dict(
-            title="<b>% Acumulado</b>",
-            titlefont=dict(size=14),
-            tickfont=dict(size=13),
+            title=dict(text="<b>% Acumulado</b>", font=dict(size=13)),
+            tickfont=dict(size=12),
             overlaying="y",
             side="right",
             range=[0, 105],
             showgrid=False
         ),
-        legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1, font=dict(size=13)),
+        legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1, font=dict(size=12)),
         margin=dict(l=30, r=30, t=60, b=80),
-        height=520,
+        height=500,
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="#F8F9FA"
     )
@@ -229,7 +230,7 @@ elif menu == "Gestão Operacional":
                 st.success(f"Chamado {num_chamado} atualizado para '{novo_status}'. A planilha formatará a linha e inserirá a data automaticamente.")
                 st.cache_resource.clear()
 
-# MODULO 3: DASHBOARD DE ALTA PERFORMANCE
+# MODULO 3: DASHBOARD
 elif menu == "Dashboard & SLA":
     st.title("📊 Painel Gerencial & Indicadores de SLA")
 
@@ -239,11 +240,11 @@ elif menu == "Dashboard & SLA":
 
     df_calc = df.copy()
     
-    # Tratamento de datas com saneamento de valores anteriores a 2024
-    df_calc["Carimbo de data/hora"] = pd.to_datetime(df_calc["Carimbo de data/hora"], errors="coerce", dayfirst=True)
-    df_calc["Data de conclusão"] = pd.to_datetime(df_calc["Data de conclusão"], errors="coerce", dayfirst=True)
+    # Tratamento flexivel de datas e saneamento de anos incorretos
+    df_calc["Carimbo de data/hora"] = pd.to_datetime(df_calc["Carimbo de data/hora"], errors="coerce", format="mixed")
+    df_calc["Data de conclusão"] = pd.to_datetime(df_calc["Data de conclusão"], errors="coerce", format="mixed")
     
-    # Filtro de corte temporal obriga datas validas a partir de 2024
+    # Corte temporal eliminando registros anteriores a 2024
     df_calc = df_calc[df_calc["Carimbo de data/hora"] >= pd.Timestamp("2024-01-01")]
 
     df_concluidos = df_calc.dropna(subset=["Data de conclusão"]).copy()
@@ -332,14 +333,14 @@ elif menu == "Dashboard & SLA":
 
     st.markdown("---")
 
-    # LINHA 3: PARETO DE EQUIPAMENTOS (VISÃO AMPLA DE PRIMEIRA PÁGINA)
+    # LINHA 3: PARETO DE EQUIPAMENTOS
     fig_equip = criar_grafico_pareto(df_calc, "Equipamento/Sistema/Local", "Diagrama de Pareto: Equipamentos Críticos (80/20)")
     if fig_equip:
         st.plotly_chart(fig_equip, use_container_width=True)
 
     st.markdown("---")
 
-    # LINHA 4: PARETO DE SETORES E TENDÊNCIA TEMPORAL (LADO A LADO)
+    # LINHA 4: PARETO DE SETORES E TENDÊNCIA TEMPORAL
     col_p1, col_p2 = st.columns(2)
     
     with col_p1:
@@ -356,10 +357,10 @@ elif menu == "Dashboard & SLA":
             fig_evol = px.line(evolucao, x="Data_Dia", y="Volume", markers=True, title="<b>Evolução Diária (2024 - Atual)</b>")
             fig_evol.update_traces(line_color="#2A9D8F", line_width=4, marker=dict(size=8, color="#E76F51"))
             fig_evol.update_layout(
-                height=520,
-                title_font=dict(size=20, color="#1D3557"),
-                xaxis=dict(title="<b>Data</b>", tickfont=dict(size=12), showgrid=True),
-                yaxis=dict(title="<b>Qtd Chamados</b>", tickfont=dict(size=12), showgrid=True),
+                height=500,
+                title=dict(text="<b>Evolução Diária (2024 - Atual)</b>", font=dict(size=18, color="#1D3557")),
+                xaxis=dict(title=dict(text="<b>Data</b>", font=dict(size=12)), tickfont=dict(size=12), showgrid=True),
+                yaxis=dict(title=dict(text="<b>Qtd Chamados</b>", font=dict(size=12)), tickfont=dict(size=12), showgrid=True),
                 margin=dict(l=30, r=30, t=60, b=40),
                 paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="#F8F9FA"
@@ -368,7 +369,7 @@ elif menu == "Dashboard & SLA":
 
     st.markdown("---")
 
-    # LINHA 5: TABELAS DE DESEMPEHO E ESTOURO DE SLA
+    # LINHA 5: TABELAS DE DESEMPENHO E ESTOURO DE SLA
     col_t1, col_t2 = st.columns(2)
     
     with col_t1:
