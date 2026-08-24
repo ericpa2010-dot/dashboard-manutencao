@@ -163,26 +163,30 @@ def extrair_dt_conclusao(row):
 
 def formatar_dt_exibicao(dt, val_raw=""):
     if pd.notna(dt):
-        return dt.strftime("%d/%m/%Y %H:%M")
+        return dt.strftime("%d/%m/%Y %H:%M:%S")
     s = str(val_raw).replace('\xa0', ' ').strip()
     return s if s not in ["", "nan", "None"] else "-"
 
 def formatar_tempo_legivel(horas):
     if pd.isna(horas) or horas is None or horas < 0:
-        return "0m"
-    total_min = int(round(horas * 60))
-    dias = total_min // (24 * 60)
-    mins_restantes = total_min % (24 * 60)
-    hrs = mins_restantes // 60
-    mins = mins_restantes % 60
+        return "0s"
+    total_sec = int(round(horas * 3600))
+    dias = total_sec // (24 * 3600)
+    sec_restantes = total_sec % (24 * 3600)
+    hrs = sec_restantes // 3600
+    sec_restantes %= 3600
+    mins = sec_restantes // 60
+    secs = sec_restantes % 60
     
     partes = []
     if dias > 0:
         partes.append(f"{dias}d")
     if hrs > 0:
         partes.append(f"{hrs}h")
-    if mins > 0 or (dias == 0 and hrs == 0):
+    if mins > 0:
         partes.append(f"{mins}m")
+    if secs > 0 or not partes:
+        partes.append(f"{secs}s")
     return " ".join(partes)
 
 def criar_grafico_pareto_limpo(df_input, coluna, titulo, top_n=10):
