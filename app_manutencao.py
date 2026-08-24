@@ -480,8 +480,8 @@ with tab_dash:
                     </div>
                     <div style="font-size:2rem; font-weight:800; color:{cor_texto}; margin:6px 0 2px 0;">{pct:.0f}% <span style="font-size:0.8rem; color:#CBD5E1; font-weight:400;">Conformidade</span></div>
                     <div style="margin-top:8px; padding-top:8px; border-top:1px solid #334155; font-size:0.8rem; color:#CBD5E1; display:flex; justify-content:space-between; flex-wrap:wrap; gap:4px;">
-                        <span>🔵 Atuando: <b style="color:#F8FAFC;">{qtd_atuando}</b></span>
-                        <span>🟡 Pendente: <b style="color:#F8FAFC;">{qtd_pendente}</b></span>
+                        <span>🟣 Atuando: <b style="color:#C084FC;">{qtd_atuando}</b></span>
+                        <span>🟡 Pendente: <b style="color:#FBBF24;">{qtd_pendente}</b></span>
                     </div>
                     <div style="margin-top:6px; font-size:0.75rem; color:#94A3B8; display:flex; justify-content:space-between;">
                         <span>✅ {cumpridos} OK · 🔴 {estourados} Fora</span>
@@ -496,7 +496,7 @@ with tab_dash:
         col_alta, col_media, col_baixa = st.columns(3)
         cartao_prioridade_neon(col_alta, "Alta", 4.0, "#EF4444", "#F87171")
         cartao_prioridade_neon(col_media, "Média", 8.0, "#F59E0B", "#FBBF24")
-        cartao_prioridade_neon(col_baixa, "Baixa", 78.0, "#3B82F6", "#38BDF8")
+        cartao_prioridade_neon(col_baixa, "Baixa", 78.0, "#0D9488", "#2DD4BF")
 
         st.markdown("---")
 
@@ -528,7 +528,7 @@ with tab_dash:
                     tempo_dec_str = "-"
                     status_sla = "⚪ Sem data de abertura"
 
-                status_formatado = "🔵 Atuando" if st_str == "Atuando" else "🟡 Pendente"
+                status_formatado = "🟣 Atuando" if st_str == "Atuando" else "🟡 Pendente"
 
                 lista_ativos.append({
                     "Nº Chamado": row.get("Num_Chamado_Num"),
@@ -554,7 +554,7 @@ with tab_dash:
                 elif "media" in prio:
                     return ['background-color: #78350F; color: #FDE68A; font-weight: 700;'] * len(row)
                 else:
-                    return ['background-color: #064E3B; color: #A7F3D0; font-weight: 700;'] * len(row)
+                    return ['background-color: #134E4A; color: #99F6E4; font-weight: 700;'] * len(row)
 
             styled_ativos = df_disp_ativos.style.apply(colorir_linha_ativos, axis=1)
             st.dataframe(styled_ativos, use_container_width=True, hide_index=True)
@@ -600,7 +600,7 @@ with tab_dash:
                     tmr_str = "-"
                     sit_str = "⚪ Sem data de abertura"
 
-                status_disp = "🔵 Atuando" if st_str == "Atuando" else "🟡 Pendente"
+                status_disp = "🟣 Atuando" if st_str == "Atuando" else "🟡 Pendente"
 
             lista_geral.append({
                 "Nº Chamado": row.get("Num_Chamado_Num"),
@@ -630,7 +630,7 @@ with tab_dash:
                     elif "media" in prio:
                         return ['background-color: #78350F; color: #FDE68A; font-weight: 700;'] * len(row)
                     else:
-                        return ['background-color: #1E3A8A; color: #BFDBFE; font-weight: 700;'] * len(row)
+                        return ['background-color: #134E4A; color: #99F6E4; font-weight: 700;'] * len(row)
 
             styled_geral = df_disp_geral.style.apply(colorir_linha_geral, axis=1)
             st.dataframe(styled_geral, use_container_width=True, hide_index=True)
