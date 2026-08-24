@@ -10,52 +10,74 @@ import plotly.express as px
 # Configuração da página
 st.set_page_config(page_title="Gestão de Manutenção", page_icon="🛠️", layout="wide")
 
-# CSS: Design System Minimalista Corporativo
+# CSS: Design System Escuro, Futurista e de Alto Contraste (Eye-Care)
 st.markdown("""
     <style>
-    /* Oculta elementos nativos */
+    /* Oculta elementos nativos do Streamlit */
     #MainMenu {visibility: hidden;}
     header {visibility: hidden;}
     footer {visibility: hidden;}
 
-    /* Fundo da aplicação e tipografia */
+    /* Fundo escuro profundo e tipografia clara */
     .stApp {
-        background-color: #F8FAFC;
-        color: #0F172A;
+        background-color: #0F172A;
+        color: #F8FAFC;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     }
 
-    /* Cartões de métricas customizados */
-    div[data-testid="stMetric"] {
-        background-color: #FFFFFF;
-        border: 1px solid #E2E8F0;
-        padding: 16px 20px;
-        border-radius: 12px;
-        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.02);
-    }
-    div[data-testid="stMetricLabel"] {
-        font-size: 0.85rem !important;
-        color: #64748B !important;
-        font-weight: 600 !important;
-        text-transform: uppercase;
-        letter-spacing: 0.025em;
-    }
-    div[data-testid="stMetricValue"] {
-        font-size: 1.8rem !important;
-        color: #0F172A !important;
+    /* Títulos e cabeçalhos */
+    h1, h2, h3, h4, h5, h6, label {
+        color: #F8FAFC !important;
         font-weight: 700 !important;
     }
 
-    /* Ajuste de abas e divisores */
+    /* Cartões de métricas (KPIs) com estilo futurista */
+    div[data-testid="stMetric"] {
+        background-color: #1E293B;
+        border: 1px solid #334155;
+        border-radius: 12px;
+        padding: 16px 20px;
+        box-shadow: 0 4px 20px -2px rgba(56, 189, 248, 0.05);
+    }
+    div[data-testid="stMetricLabel"] {
+        font-size: 0.85rem !important;
+        color: #94A3B8 !important;
+        font-weight: 600 !important;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    div[data-testid="stMetricValue"] {
+        font-size: 1.8rem !important;
+        color: #38BDF8 !important;
+        font-weight: 800 !important;
+    }
+
+    /* Estilização de campos de entrada (Inputs/Selects) */
+    .stTextInput > div > div > input, 
+    .stSelectbox > div > div, 
+    .stTextArea textarea {
+        background-color: #1E293B !important;
+        color: #F8FAFC !important;
+        border: 1px solid #334155 !important;
+        border-radius: 8px !important;
+    }
+
+    /* Sidebar escura */
+    section[data-testid="stSidebar"] {
+        background-color: #0B0F19;
+        border-right: 1px solid #1E293B;
+    }
+
+    /* Divisores e linhas */
     hr {
-        border-color: #E2E8F0 !important;
+        border-color: #334155 !important;
         margin: 1.5rem 0 !important;
     }
 
-    /* Tabelas limpas */
+    /* Tabelas em modo escuro */
     div[data-testid="stDataFrame"] {
-        background-color: #FFFFFF;
-        border: 1px solid #E2E8F0;
+        background-color: #1E293B;
+        border: 1px solid #334155;
         border-radius: 12px;
         padding: 8px;
     }
@@ -94,7 +116,7 @@ def formatar_tempo_legivel(horas):
     hrs_restantes = int(horas % 24)
     return f"{dias}d {hrs_restantes}h"
 
-# Gerador de Pareto Minimalista
+# Gerador de Pareto Escuro e Futurista
 def criar_grafico_pareto_limpo(df_input, coluna, titulo, top_n=10):
     if coluna not in df_input.columns or df_input[coluna].dropna().empty:
         return None
@@ -126,10 +148,10 @@ def criar_grafico_pareto_limpo(df_input, coluna, titulo, top_n=10):
             x=counts[coluna],
             y=counts['Ocorrências'],
             name="Qtd Chamados",
-            marker_color="#334155",
+            marker_color="#38BDF8",
             text=counts['Ocorrências'],
             textposition="outside",
-            textfont=dict(size=12, color="#0F172A")
+            textfont=dict(size=12, color="#F8FAFC")
         )
     )
     
@@ -140,8 +162,8 @@ def criar_grafico_pareto_limpo(df_input, coluna, titulo, top_n=10):
             name="% Acumulado",
             yaxis="y2",
             mode="lines+markers",
-            line=dict(color="#0284C7", width=2.5),
-            marker=dict(size=7, color="#0284C7")
+            line=dict(color="#F43F5E", width=3),
+            marker=dict(size=8, color="#F43F5E")
         )
     )
     
@@ -149,33 +171,33 @@ def criar_grafico_pareto_limpo(df_input, coluna, titulo, top_n=10):
         y=80,
         yref="y2",
         line_dash="dash",
-        line_color="#E11D48",
-        line_width=1.5
+        line_color="#FBBF24",
+        line_width=2
     )
     
     fig.update_layout(
-        template="plotly_white",
-        title=dict(text=f"<b>{titulo}</b>", font=dict(size=15, color="#0F172A")),
-        xaxis=dict(tickfont=dict(size=11, color="#475569"), tickangle=-15, showgrid=False),
+        template="plotly_dark",
+        title=dict(text=f"<b>{titulo}</b>", font=dict(size=16, color="#F8FAFC")),
+        xaxis=dict(tickfont=dict(size=11, color="#CBD5E1"), tickangle=-15, showgrid=False),
         yaxis=dict(
-            title=dict(text="<b>Qtd Chamados</b>", font=dict(size=12, color="#475569")),
-            tickfont=dict(size=11, color="#475569"),
-            gridcolor="#F1F5F9",
+            title=dict(text="<b>Qtd Chamados</b>", font=dict(size=12, color="#94A3B8")),
+            tickfont=dict(size=11, color="#CBD5E1"),
+            gridcolor="#334155",
             showgrid=True
         ),
         yaxis2=dict(
-            title=dict(text="<b>% Acumulado</b>", font=dict(size=12, color="#475569")),
-            tickfont=dict(size=11, color="#475569"),
+            title=dict(text="<b>% Acumulado</b>", font=dict(size=12, color="#94A3B8")),
+            tickfont=dict(size=11, color="#CBD5E1"),
             overlaying="y",
             side="right",
             range=[0, 105],
             showgrid=False
         ),
-        legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1, font=dict(size=11)),
+        legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1, font=dict(size=11, color="#F8FAFC")),
         margin=dict(l=20, r=20, t=50, b=50),
         height=420,
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)"
+        paper_bgcolor="#1E293B",
+        plot_bgcolor="#1E293B"
     )
     
     return fig
@@ -289,7 +311,7 @@ elif menu == "Gestão Operacional":
                 st.success(f"Chamado {num_chamado} atualizado com sucesso!")
                 st.cache_resource.clear()
 
-# MODULO 3: DASHBOARD MINIMALISTA
+# MODULO 3: DASHBOARD FUTURISTA DE ALTO CONTRASTE
 elif menu == "Dashboard & SLA":
     st.title("📊 Painel Gerencial & Indicadores de SLA")
 
@@ -379,7 +401,7 @@ elif menu == "Dashboard & SLA":
     # LINHA 3: Cartões de SLA por Prioridade
     st.markdown("##### 🎯 Cumprimento de SLA por Prioridade")
 
-    def cartao_prioridade_clean(col, nome, meta_horas):
+    def cartao_prioridade_neon(col, nome, meta_horas):
         subset = df_concluidos[
             df_concluidos["Prioridade"].astype(str).str.lower().str.replace("é", "e", regex=False).str.contains(nome.lower())
         ]
@@ -391,27 +413,26 @@ elif menu == "Dashboard & SLA":
         subset_tmr = subset[subset["Tempo_Resolucao_Horas"] <= 720]
         tmr_num = subset_tmr["Tempo_Resolucao_Horas"].mean() if not subset_tmr.empty else (subset["Tempo_Resolucao_Horas"].median() if total else 0.0)
 
-        # Paleta limpa com fundos suaves e bordas elegantes
         if pct >= 90:
-            bg_card, border_card, text_color = "#F0FDF4", "#BBF7D0", "#166534"
+            border_card, text_glow = "#34D399", "#34D399"
         elif pct >= 70:
-            bg_card, border_card, text_color = "#FEFCE8", "#FEF08A", "#854D0E"
+            border_card, text_glow = "#FBBF24", "#FBBF24"
         else:
-            bg_card, border_card, text_color = "#FEF2F2", "#FECACA", "#991B1B"
+            border_card, text_glow = "#F87171", "#F87171"
 
         with col:
             st.markdown(
                 f"""
-                <div style="background-color:{bg_card}; border:1px solid {border_card}; padding:20px; border-radius:12px;">
+                <div style="background-color:#1E293B; border:1px solid {border_card}; padding:20px; border-radius:12px; box-shadow: 0 0 15px -3px {border_card}33;">
                     <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <span style="font-weight:700; color:{text_color}; font-size:1rem;">{nome}</span>
-                        <span style="font-size:0.8rem; color:{text_color}; opacity:0.8;">Meta: {formatar_tempo_legivel(meta_horas)}</span>
+                        <span style="font-weight:700; color:#F8FAFC; font-size:1rem;">{nome}</span>
+                        <span style="font-size:0.8rem; color:#94A3B8;">Meta: {formatar_tempo_legivel(meta_horas)}</span>
                     </div>
-                    <div style="font-size:2.2rem; font-weight:800; color:{text_color}; margin:12px 0 4px 0;">{pct:.0f}%</div>
-                    <div style="font-size:0.85rem; color:{text_color}; font-weight:500;">Conformidade operacional</div>
-                    <div style="margin-top:14px; pt-12px; border-top:1px solid {border_card}; font-size:0.8rem; color:{text_color}; display:flex; justify-content:space-between;">
+                    <div style="font-size:2.2rem; font-weight:800; color:{text_glow}; margin:12px 0 4px 0;">{pct:.0f}%</div>
+                    <div style="font-size:0.85rem; color:#CBD5E1; font-weight:500;">Conformidade operacional</div>
+                    <div style="margin-top:14px; padding-top:12px; border-top:1px solid #334155; font-size:0.8rem; color:#94A3B8; display:flex; justify-content:space-between;">
                         <span>✅ {cumpridos} OK &nbsp;·&nbsp; 🔴 {estourados} Fora</span>
-                        <span>TMR: <b>{formatar_tempo_legivel(tmr_num)}</b></span>
+                        <span>TMR: <b style="color:#F8FAFC;">{formatar_tempo_legivel(tmr_num)}</b></span>
                     </div>
                 </div>
                 """,
@@ -419,9 +440,9 @@ elif menu == "Dashboard & SLA":
             )
 
     col_alta, col_media, col_baixa = st.columns(3)
-    cartao_prioridade_clean(col_alta, "Alta", 4.0)
-    cartao_prioridade_clean(col_media, "Média", 8.0)
-    cartao_prioridade_clean(col_baixa, "Baixa", 78.0)
+    cartao_prioridade_neon(col_alta, "Alta", 4.0)
+    cartao_prioridade_neon(col_media, "Média", 8.0)
+    cartao_prioridade_neon(col_baixa, "Baixa", 78.0)
 
     st.markdown("---")
 
@@ -450,16 +471,16 @@ elif menu == "Dashboard & SLA":
             evolucao = evolucao.sort_values("Ano_Mês")
             
             fig_evol = px.bar(evolucao, x="Ano_Mês", y="Volume", text="Volume", title="<b>Evolução Mensal de Chamados (2024+)</b>")
-            fig_evol.update_traces(marker_color="#0284C7", textposition="outside", textfont=dict(size=11, color="#0F172A"))
+            fig_evol.update_traces(marker_color="#38BDF8", textposition="outside", textfont=dict(size=11, color="#F8FAFC"))
             fig_evol.update_layout(
-                template="plotly_white",
+                template="plotly_dark",
                 height=420,
-                title=dict(text="<b>Evolução Mensal de Chamados (2024+)</b>", font=dict(size=15, color="#0F172A")),
-                xaxis=dict(title=dict(text="<b>Mês/Ano</b>", font=dict(size=12, color="#475569")), tickfont=dict(size=11, color="#475569"), showgrid=False),
-                yaxis=dict(title=dict(text="<b>Qtd Chamados</b>", font=dict(size=12, color="#475569")), tickfont=dict(size=11, color="#475569"), gridcolor="#F1F5F9", showgrid=True),
+                title=dict(text="<b>Evolução Mensal de Chamados (2024+)</b>", font=dict(size=15, color="#F8FAFC")),
+                xaxis=dict(title=dict(text="<b>Mês/Ano</b>", font=dict(size=12, color="#94A3B8")), tickfont=dict(size=11, color="#CBD5E1"), showgrid=False),
+                yaxis=dict(title=dict(text="<b>Qtd Chamados</b>", font=dict(size=12, color="#94A3B8")), tickfont=dict(size=11, color="#CBD5E1"), gridcolor="#334155", showgrid=True),
                 margin=dict(l=20, r=20, t=50, b=50),
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)"
+                paper_bgcolor="#1E293B",
+                plot_bgcolor="#1E293B"
             )
             st.plotly_chart(fig_evol, use_container_width=True)
 
@@ -533,18 +554,18 @@ elif menu == "Dashboard & SLA":
             df_fora_sla = pd.DataFrame(lista_fora).sort_values("Atraso_Horas_Num", ascending=False)
             df_display = df_fora_sla[["Nº Chamado", "Área", "Equipamento", "Prioridade", "Status", "Tempo Decorrido", "Atraso", "Técnico"]]
             
-            # Estilo discreto e de alto contraste para a tabela
-            def colorir_status_clean(val):
+            # Formatação de alto contraste para tabela no modo escuro
+            def colorir_status_dark(val):
                 v = str(val).strip()
                 if v == "Concluído":
-                    return "background-color: #DCFCE7; color: #15803D; font-weight: 600;"
+                    return "background-color: #065F46; color: #34D399; font-weight: 700;"
                 elif v == "Pendente":
-                    return "background-color: #FEE2E2; color: #B91C1C; font-weight: 600;"
+                    return "background-color: #78350F; color: #FBBF24; font-weight: 700;"
                 elif v == "Atuando":
-                    return "background-color: #E0F2FE; color: #0369A1; font-weight: 600;"
+                    return "background-color: #075985; color: #38BDF8; font-weight: 700;"
                 return ""
             
-            styled_df = df_display.style.map(colorir_status_clean, subset=["Status"])
+            styled_df = df_display.style.map(colorir_status_dark, subset=["Status"])
             st.dataframe(styled_df, use_container_width=True, hide_index=True)
         else:
             st.success("✅ Operação 100% em conformidade: nenhum chamado fora do prazo registrado.")
