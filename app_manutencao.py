@@ -32,19 +32,29 @@ def load_data():
     df = pd.DataFrame(data)
     return sheet, df
 
-# FUNÇÃO DE PARETO COMPATÍVEL E VISÍVEL
-def criar_grafico_pareto(df_input, coluna, titulo):
+# GERADOR DE PARETO LIMPO (TOP 10 + OUTROS)
+def criar_grafico_pareto_limpo(df_input, coluna, titulo, top_n=10):
     if coluna not in df_input.columns or df_input[coluna].dropna().empty:
         return None
     
-    counts = df_input[coluna].astype(str).str.strip().value_counts().reset_index()
-    counts.columns = [coluna, 'Ocorrências']
-    counts = counts[counts[coluna] != ""]
-    counts = counts.sort_values(by='Ocorrências', ascending=False)
-    
-    if counts.empty:
+    s = df_input[coluna].astype(str).str.strip()
+    s = s[s != ""]
+    if s.empty:
         return None
         
+    counts = s.value_counts().reset_index()
+    counts.columns = [coluna, 'Ocorrências']
+    
+    # Agrupa a cauda longa no bloco Outros
+    if len(counts) > top_n:
+        top_counts = counts.head(top_n).copy()
+        outros_qtd = counts.iloc[top_n:]['Ocorrências'].sum()
+        outros_df = pd.DataFrame([{coluna: 'Outros (Diversos)', 'Ocorrências': outros_qtd}])
+        counts = pd.concat([top_counts, outros_df], ignore_index=True)
+    
+    # Encurta textos longos para nao encavalar o eixo X
+    counts[coluna] = counts[coluna].apply(lambda x: x[:22] + "..." if len(x) > 22 else x)
+    
     counts['Acumulado'] = counts['Ocorrências'].cumsum()
     total = counts['Ocorrências'].sum()
     counts['Percentual_Acumulado'] = (counts['Acumulado'] / total) * 100 if total > 0 else 0
@@ -59,7 +69,7 @@ def criar_grafico_pareto(df_input, coluna, titulo):
             marker_color="#1D3557",
             text=counts['Ocorrências'],
             textposition="outside",
-            textfont=dict(size=14, color="#1D3557")
+            textfont=dict(size=13, color="#1D3557")
         )
     )
     
@@ -67,11 +77,11 @@ def criar_grafico_pareto(df_input, coluna, titulo):
         go.Scatter(
             x=counts[coluna],
             y=counts['Percentual_Acumulado'],
-            name="% Acumulado (Pareto)",
+            name="% Acumulado",
             yaxis="y2",
             mode="lines+markers",
-            line=dict(color="#E63946", width=4),
-            marker=dict(size=10, color="#E63946")
+            line=dict(color="#E63946", width=3),
+            marker=dict(size=8, color="#E63946")
         )
     )
     
@@ -80,28 +90,28 @@ def criar_grafico_pareto(df_input, coluna, titulo):
         yref="y2",
         line_dash="dash",
         line_color="#FFB703",
-        line_width=3
+        line_width=2
     )
     
     fig.update_layout(
-        title=dict(text=f"<b>{titulo}</b>", font=dict(size=18, color="#1D3557")),
-        xaxis=dict(tickfont=dict(size=12, color="#1D3557"), tickangle=-20),
+        title=dict(text=f"<b>{titulo}</b>", font=dict(size=16, color="#1D3557")),
+        xaxis=dict(tickfont=dict(size=11, color="#1D3557"), tickangle=-15),
         yaxis=dict(
-            title=dict(text="<b>Número de Chamados</b>", font=dict(size=13, color="#1D3557")),
-            tickfont=dict(size=12),
+            title=dict(text="<b>Qtd Chamados</b>", font=dict(size=12, color="#1D3557")),
+            tickfont=dict(size=11),
             showgrid=True
         ),
         yaxis2=dict(
-            title=dict(text="<b>% Acumulado</b>", font=dict(size=13, color="#1D3557")),
-            tickfont=dict(size=12),
+            title=dict(text="<b>% Acumulado</b>", font=dict(size=12, color="#1D3557")),
+            tickfont=dict(size=11),
             overlaying="y",
             side="right",
             range=[0, 105],
             showgrid=False
         ),
-        legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1, font=dict(size=12)),
-        margin=dict(l=30, r=30, t=60, b=80),
-        height=500,
+        legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1, font=dict(size=11)),
+        margin=dict(l=20, r=20, t=50, b=60),
+        height=450,
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="#F8F9FA"
     )
@@ -242,7 +252,6 @@ elif menu == "Dashboard & SLA":
         st.info("Nenhum dado registrado na planilha até o momento.")
         st.stop()
 
-    # Leitura integral sem descarte de registros
     total_chamados = len(df)
     em_aberto = len(df[df["Status"].astype(str).str.strip().isin(["Pendente", "Atuando"])])
 
@@ -334,35 +343,39 @@ elif menu == "Dashboard & SLA":
 
     st.markdown("---")
 
-    # PARETO DE EQUIPAMENTOS
-    fig_equip = criar_grafico_pareto(df_calc, "Equipamento/Sistema/Local", "Diagrama de Pareto: Equipamentos Críticos (80/20)")
+    # PARETO DE EQUIPAMENTOS (TOP 10)
+    fig_equip = criar_grafico_pareto_limpo(df_calc, "Equipamento/Sistema/Local", "Top 10 Equipamentos Críticos (Pareto 80/20)", top_n=10)
     if fig_equip:
         st.plotly_chart(fig_equip, use_container_width=True)
 
     st.markdown("---")
 
-    # PARETO DE SETORES E TENDÊNCIA TEMPORAL
+    # PARETO DE SETORES E TENDÊNCIA TEMPORAL MENSAL
     col_p1, col_p2 = st.columns(2)
     
     with col_p1:
-        fig_setor = criar_grafico_pareto(df_calc, "Área do chamado", "Pareto por Setor Solicitante")
+        fig_setor = criar_grafico_pareto_limpo(df_calc, "Área do chamado", "Top Setores Solicitantes", top_n=8)
         if fig_setor:
             st.plotly_chart(fig_setor, use_container_width=True)
 
     with col_p2:
         df_tempo = df_calc.dropna(subset=["dt_abertura"]).copy()
+        # Filtro estrito removendo datas anteriores a 2024
+        df_tempo = df_tempo[df_tempo["dt_abertura"] >= pd.Timestamp("2024-01-01")]
+        
         if not df_tempo.empty:
-            df_tempo["Data_Dia"] = df_tempo["dt_abertura"].dt.date
-            evolucao = df_tempo.groupby("Data_Dia").size().reset_index(name="Volume")
+            df_tempo["Ano_Mês"] = df_tempo["dt_abertura"].dt.strftime("%Y-%m")
+            evolucao = df_tempo.groupby("Ano_Mês").size().reset_index(name="Volume")
+            evolucao = evolucao.sort_values("Ano_Mês")
             
-            fig_evol = px.line(evolucao, x="Data_Dia", y="Volume", markers=True)
-            fig_evol.update_traces(line_color="#2A9D8F", line_width=4, marker=dict(size=8, color="#E76F51"))
+            fig_evol = px.bar(evolucao, x="Ano_Mês", y="Volume", text="Volume", title="<b>Evolução Mensal de Chamados (2024+)</b>")
+            fig_evol.update_traces(marker_color="#2A9D8F", textposition="outside", textfont=dict(size=12, color="#1D3557"))
             fig_evol.update_layout(
-                height=500,
-                title=dict(text="<b>Evolução Diária de Chamados</b>", font=dict(size=18, color="#1D3557")),
-                xaxis=dict(title=dict(text="<b>Data</b>", font=dict(size=12)), tickfont=dict(size=12), showgrid=True),
-                yaxis=dict(title=dict(text="<b>Qtd Chamados</b>", font=dict(size=12)), tickfont=dict(size=12), showgrid=True),
-                margin=dict(l=30, r=30, t=60, b=40),
+                height=450,
+                title=dict(text="<b>Evolução Mensal de Chamados (2024+)</b>", font=dict(size=16, color="#1D3557")),
+                xaxis=dict(title=dict(text="<b>Mês/Ano</b>", font=dict(size=12)), tickfont=dict(size=11), showgrid=False),
+                yaxis=dict(title=dict(text="<b>Qtd Chamados</b>", font=dict(size=12)), tickfont=dict(size=11), showgrid=True),
+                margin=dict(l=20, r=20, t=50, b=50),
                 paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="#F8F9FA"
             )
