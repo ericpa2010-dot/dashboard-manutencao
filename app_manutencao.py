@@ -197,7 +197,7 @@ elif menu == "Dashboard & SLA":
     em_aberto = len(df_calc[df_calc["Status"].isin(["Pendente", "Atuando"])])
     total_concluidos = len(df_concluidos)
     taxa_conclusao = (total_concluidos / total_chamados * 100) if total_chamados > 0 else 0.0
-    mttr_geral = df_concluidos["Tempo_Resolucao_Horas"].mean() if not df_concluidos.empty else 0.0
+    tmr_geral = df_concluidos["Tempo_Resolucao_Horas"].mean() if not df_concluidos.empty else 0.0
     sla_cumprido_pct = (
         (df_concluidos["SLA_Cumprido"].sum() / total_concluidos * 100) if total_concluidos > 0 else 100.0
     )
@@ -206,7 +206,7 @@ elif menu == "Dashboard & SLA":
     c1.metric("Total de Chamados", total_chamados)
     c2.metric("Em Aberto", em_aberto)
     c3.metric("Taxa de Resolução", f"{taxa_conclusao:.0f}%")
-    c4.metric("MTTR Geral", f"{mttr_geral:.1f}h")
+    c4.metric("Tempo Médio (TMR)", f"{tmr_geral:.1f}h")
     c5.metric("Conformidade SLA Geral", f"{sla_cumprido_pct:.0f}%")
 
     st.markdown("---")
@@ -222,7 +222,7 @@ elif menu == "Dashboard & SLA":
         cumpridos = int(subset["SLA_Cumprido"].sum()) if total else 0
         estourados = total - cumpridos
         pct = (cumpridos / total * 100) if total else 100.0
-        mttr = subset["Tempo_Resolucao_Horas"].mean() if total else 0.0
+        tmr = subset["Tempo_Resolucao_Horas"].mean() if total else 0.0
 
         if pct >= 90:
             cor_fundo, cor_texto = "#D4EDDA", "#155724"
@@ -241,7 +241,7 @@ elif menu == "Dashboard & SLA":
                     <hr style="border-color:{cor_texto}; opacity:0.3; margin:10px 0;">
                     <p style="color:{cor_texto}; margin:0; font-size:0.9em;">
                         ✅ {cumpridos} no prazo &nbsp;·&nbsp; 🔴 {estourados} estourados<br>
-                        ⏱️ MTTR: {mttr:.1f}h
+                        ⏱️ Tempo Médio (TMR): {tmr:.1f}h
                     </p>
                 </div>
                 """,
@@ -290,11 +290,12 @@ elif menu == "Dashboard & SLA":
             if "Técnico Responsável" in df_calc.columns and not df_concluidos.empty:
                 tec_stats = df_concluidos.groupby("Técnico Responsável").agg(
                     Atendidos=("Nº Chamado", "count"),
-                    MTTR_Horas=("Tempo_Resolucao_Horas", "mean"),
+                    Tempo_Medio_Horas=("Tempo_Resolucao_Horas", "mean"),
                     SLA_OK_Pct=("SLA_Cumprido", lambda x: (x.sum() / len(x)) * 100),
                 ).reset_index()
-                tec_stats["MTTR_Horas"] = tec_stats["MTTR_Horas"].round(1)
+                tec_stats["Tempo_Medio_Horas"] = tec_stats["Tempo_Medio_Horas"].round(1)
                 tec_stats["SLA_OK_Pct"] = tec_stats["SLA_OK_Pct"].round(1)
+                tec_stats.rename(columns={"Tempo_Medio_Horas": "TMR Médio (h)", "SLA_OK_Pct": "SLA OK (%)"}, inplace=True)
                 st.dataframe(tec_stats, use_container_width=True, hide_index=True)
             else:
                 st.caption("Aguardando finalização de chamados para consolidação de métricas por técnico.")
