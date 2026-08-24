@@ -120,6 +120,15 @@ def extrair_campo(row, candidatos, padrao=""):
             return str(row[c]).strip()
     return padrao
 
+def extrair_dt_abertura(row):
+    val = extrair_campo(row, ["Carimbo de data/hora", "Carimbo de Data/Hora", "Data/Hora", "Data de Abertura", "Data"], "")
+    if not val or val in ["nan", "None", ""]:
+        return pd.NaT
+    dt = pd.to_datetime(val, errors="coerce", dayfirst=True)
+    if pd.isna(dt):
+        dt = pd.to_datetime(val, errors="coerce", dayfirst=False)
+    return dt
+
 def formatar_tempo_legivel(horas):
     if pd.isna(horas) or horas is None or horas <= 0:
         return "0h"
@@ -240,7 +249,7 @@ with tab_abertura:
                 st.warning("Por favor, preencha os campos obrigatórios.")
             else:
                 fuso_br = pytz.timezone("America/Sao_Paulo")
-                agora = datetime.now(fuso_br).strftime("%Y-%m-%d %H:%M:%S")
+                agora = datetime.now(fuso_br).strftime("%d/%m/%Y %H:%M:%S")
                 
                 headers = [str(h).strip() for h in sheet.row_values(1)]
                 nova_linha = [""] * len(headers)
@@ -294,20 +303,29 @@ with tab_dash:
         df_calc["Area_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["Área do chamado", "Nome e Setor"], "Geral"), axis=1)
         
         def obter_status_sanitizado(r):
-            st_val = extrair_campo(r, ["Status"], "").capitalize()
-            if st_val in ["Pendente", "Concluído", "Concluido", "Atuando", "Aberto", "Em andamento"]:
-                return "Concluído" if "Conclu" in st_val else st_val
-            st_col13 = str(r.get("Coluna 13", "")).strip().capitalize()
-            if st_col13 in ["Pendente", "Concluído", "Concluido", "Atuando", "Aberto"]:
-                return "Concluído" if "Conclu" in st_col13 else st_col13
-            st_eq = str(r.get("Equipamento / Sistema / Local", "")).strip().capitalize()
-            if st_eq in ["Pendente", "Concluído", "Concluido", "Atuando", "Aberto"]:
-                return "Concluído" if "Conclu" in st_eq else st_eq
+            dt_conc = extrair_campo(r, ["Data de conclusão", "Data de Conclusão"], "")
+            if dt_conc != "" and dt_conc != "nan" and dt_conc != "None":
+                return "Concluído"
+            
+            st_raw = str(extrair_campo(r, ["Status"], "")).strip().upper()
+            if "ATUAND" in st_raw or "ANDAMENTO" in st_raw:
+                return "Atuando"
+            if "CONCLU" in st_raw:
+                return "Concluído"
+            if "PENDENT" in st_raw or "ABERTO" in st_raw:
+                return "Pendente"
+                
+            st_col13 = str(r.get("Coluna 13", "")).strip().upper()
+            if "ATUAND" in st_col13:
+                return "Atuando"
+            if "CONCLU" in st_col13:
+                return "Concluído"
+                
             return "Pendente"
 
         df_calc["Status_Clean"] = df_calc.apply(obter_status_sanitizado, axis=1)
         
-        df_calc["dt_abertura"] = pd.to_datetime(df_calc["Carimbo de data/hora"].astype(str).str.strip(), errors="coerce", dayfirst=True)
+        df_calc["dt_abertura"] = df_calc.apply(extrair_dt_abertura, axis=1)
         df_calc["dt_conclusao"] = pd.to_datetime(df_calc["Data de conclusão"].astype(str).str.strip(), errors="coerce", dayfirst=True)
 
         status_abertos = ["Pendente", "Atuando", "Aberto", "Em andamento"]
@@ -444,31 +462,38 @@ with tab_dash:
             meta = row.get("Meta_SLA_Horas", 8.0)
             
             if st_str != "Concluído":
-                tempo = (agora_naive - dt_ab).total_seconds() / 3600.0 if pd.notna(dt_ab) else 0.0
-                estourado = tempo > meta if pd.notna(dt_ab) else False
+                dt_ab_str = dt_ab.strftime("%d/%m/%Y %H:%M") if pd.notna(dt_ab) else "Não informada"
                 
-                if pd.isna(dt_ab):
-                    status_sla = "⚪ Sem data de abertura"
-                elif estourado:
-                    status_sla = f"🔴 Estourado (+{formatar_tempo_legivel(tempo - meta)})"
+                if pd.notna(dt_ab):
+                    tempo = (agora_naive - dt_ab).total_seconds() / 3600.0
+                    estourado = tempo > meta
+                    if estourado:
+                        status_sla = f"🔴 Estourado (+{formatar_tempo_legivel(tempo - meta)})"
+                    else:
+                        restante = meta - tempo
+                        status_sla = f"🟢 No Prazo ({formatar_tempo_legivel(restante)} restantes)"
+                    tempo_dec_str = formatar_tempo_legivel(tempo)
                 else:
-                    restante = meta - tempo
-                    status_sla = f"🟢 No Prazo ({formatar_tempo_legivel(restante)} restantes)"
+                    tempo_dec_str = "-"
+                    status_sla = "⚪ Sem data de abertura"
+
+                status_formatado = "🔵 Atuando" if st_str == "Atuando" else "🟡 Pendente"
 
                 lista_ativos.append({
                     "Nº Chamado": row.get("Num_Chamado_Num"),
+                    "Abertura": dt_ab_str,
                     "Área": row.get("Area_Norm"),
                     "Equipamento": row.get("Equipamento_Norm"),
                     "Prioridade": row.get("Prioridade"),
-                    "Status": st_str,
-                    "Tempo Decorrido": formatar_tempo_legivel(tempo) if pd.notna(dt_ab) else "-",
+                    "Status": status_formatado,
+                    "Tempo Decorrido": tempo_dec_str,
                     "Situação SLA": status_sla,
                     "Técnico": row.get("Técnico Responsável") if str(row.get("Técnico Responsável")).strip() != "" else "Não atribuído"
                 })
 
         if lista_ativos:
             df_ativos = pd.DataFrame(lista_ativos).sort_values("Nº Chamado", ascending=False)
-            df_disp = df_ativos[["Nº Chamado", "Área", "Equipamento", "Prioridade", "Status", "Tempo Decorrido", "Situação SLA", "Técnico"]]
+            df_disp = df_ativos[["Nº Chamado", "Abertura", "Área", "Equipamento", "Prioridade", "Status", "Tempo Decorrido", "Situação SLA", "Técnico"]]
             
             def colorir_situacao(val):
                 v = str(val)
@@ -478,7 +503,15 @@ with tab_dash:
                     return "background-color: #065F46; color: #6EE7B7; font-weight: 700;"
                 return ""
 
-            styled_ativos = df_disp.style.map(colorir_situacao, subset=["Situação SLA"])
+            def colorir_status(val):
+                v = str(val)
+                if "Atuando" in v:
+                    return "background-color: #075985; color: #38BDF8; font-weight: 700;"
+                elif "Pendente" in v:
+                    return "background-color: #78350F; color: #FBBF24; font-weight: 700;"
+                return ""
+
+            styled_ativos = df_disp.style.map(colorir_situacao, subset=["Situação SLA"]).map(colorir_status, subset=["Status"])
             st.dataframe(styled_ativos, use_container_width=True, hide_index=True)
         else:
             st.success("✅ Nenhum chamado ativo pendente no momento.")
