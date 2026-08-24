@@ -268,6 +268,60 @@ def criar_grafico_pareto_limpo(df_input, coluna, titulo, top_n=10):
 
 SENHA_CORRETA = st.secrets.get("SENHA_GESTAO", "manutencao123")
 
+# PROCESSAMENTO DE DADOS UNIFICADO
+if not df.empty:
+    fuso_br = pytz.timezone("America/Sao_Paulo")
+    agora_br = datetime.now(fuso_br)
+
+    df_calc = df.copy()
+    
+    df_calc["Num_Chamado_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["N*Chamado", "Nº Chamado", "N° Chamado"], "0"), axis=1)
+    df_calc["Num_Chamado_Num"] = pd.to_numeric(df_calc["Num_Chamado_Norm"], errors="coerce").fillna(0).astype(int)
+    
+    df_calc["Solicitante_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["Nome e Setor", "Nome e Setor Solicitante", "Solicitante", "Nome"], "Não informado"), axis=1)
+    df_calc["Equipamento_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["Equipamento / Sistema / Local", "Equipamento/Sistema/Local", "Máquina ou Equipamento"], "Não informado"), axis=1)
+    df_calc["Problema_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["Qual é o problema?", "Descrição do chamado", "Tipo de problema"], "Sem descrição"), axis=1)
+    df_calc["Impacto_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["Qual é o impacto na operação?", "Impacto na operação", "Impacto"], "Não informado"), axis=1)
+    df_calc["Area_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["Área do chamado", "Nome e Setor"], "Geral"), axis=1)
+    
+    def obter_status_sanitizado(r):
+        dt_conc = extrair_campo(r, ["Data de conclusão", "Data de Conclusão"], "")
+        if dt_conc != "" and dt_conc != "nan" and dt_conc != "None":
+            return "Concluído"
+        
+        st_raw = str(extrair_campo(r, ["Status"], "")).strip().upper()
+        if "ATUAND" in st_raw or "ANDAMENTO" in st_raw:
+            return "Atuando"
+        if "CONCLU" in st_raw:
+            return "Concluído"
+        if "PENDENT" in st_raw or "ABERTO" in st_raw:
+            return "Pendente"
+            
+        st_col13 = str(r.get("Coluna 13", "")).strip().upper()
+        if "ATUAND" in st_col13:
+            return "Atuando"
+        if "CONCLU" in st_col13:
+            return "Concluído"
+            
+        return "Pendente"
+
+    df_calc["Status_Clean"] = df_calc.apply(obter_status_sanitizado, axis=1)
+    df_calc["dt_abertura"] = df_calc.apply(extrair_dt_abertura, axis=1)
+    df_calc["dt_conclusao"] = df_calc.apply(extrair_dt_conclusao, axis=1)
+
+    METAS_SLA = {"alta": 4.0, "media": 8.0, "baixa": 78.0}
+
+    def get_sla_target(prioridade):
+        p = str(prioridade).strip().lower().replace("é", "e")
+        for chave, meta in METAS_SLA.items():
+            if chave in p:
+                return meta
+        return 8.0
+
+    df_calc["Meta_SLA_Horas"] = df_calc["Prioridade"].apply(get_sla_target)
+else:
+    df_calc = pd.DataFrame()
+
 tab_abertura, tab_dash, tab_gestao = st.tabs(["📌 Abrir Chamado", "📊 Dashboard & SLA", "⚙️ Gestão Operacional"])
 
 # ABA 1: ABERTURA DE CHAMADO
@@ -344,49 +398,9 @@ with tab_abertura:
 with tab_dash:
     st.title("📊 Painel Gerencial & SLA")
 
-    if df.empty:
+    if df_calc.empty:
         st.info("Nenhum dado registrado na planilha até o momento.")
     else:
-        fuso_br = pytz.timezone("America/Sao_Paulo")
-        agora_br = datetime.now(fuso_br)
-
-        df_calc = df.copy()
-        
-        df_calc["Num_Chamado_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["N*Chamado", "Nº Chamado", "N° Chamado"], "0"), axis=1)
-        df_calc["Num_Chamado_Num"] = pd.to_numeric(df_calc["Num_Chamado_Norm"], errors="coerce").fillna(0).astype(int)
-        
-        df_calc["Solicitante_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["Nome e Setor", "Nome e Setor Solicitante", "Solicitante", "Nome"], "Não informado"), axis=1)
-        df_calc["Equipamento_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["Equipamento / Sistema / Local", "Equipamento/Sistema/Local", "Máquina ou Equipamento"], "Não informado"), axis=1)
-        df_calc["Problema_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["Qual é o problema?", "Descrição do chamado", "Tipo de problema"], "Sem descrição"), axis=1)
-        df_calc["Impacto_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["Qual é o impacto na operação?", "Impacto na operação", "Impacto"], "Não informado"), axis=1)
-        df_calc["Area_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["Área do chamado", "Nome e Setor"], "Geral"), axis=1)
-        
-        def obter_status_sanitizado(r):
-            dt_conc = extrair_campo(r, ["Data de conclusão", "Data de Conclusão"], "")
-            if dt_conc != "" and dt_conc != "nan" and dt_conc != "None":
-                return "Concluído"
-            
-            st_raw = str(extrair_campo(r, ["Status"], "")).strip().upper()
-            if "ATUAND" in st_raw or "ANDAMENTO" in st_raw:
-                return "Atuando"
-            if "CONCLU" in st_raw:
-                return "Concluído"
-            if "PENDENT" in st_raw or "ABERTO" in st_raw:
-                return "Pendente"
-                
-            st_col13 = str(r.get("Coluna 13", "")).strip().upper()
-            if "ATUAND" in st_col13:
-                return "Atuando"
-            if "CONCLU" in st_col13:
-                return "Concluído"
-                
-            return "Pendente"
-
-        df_calc["Status_Clean"] = df_calc.apply(obter_status_sanitizado, axis=1)
-        
-        df_calc["dt_abertura"] = df_calc.apply(extrair_dt_abertura, axis=1)
-        df_calc["dt_conclusao"] = df_calc.apply(extrair_dt_conclusao, axis=1)
-
         status_abertos = ["Pendente", "Atuando", "Aberto", "Em andamento"]
         mask_abertos = df_calc["Status_Clean"].isin(status_abertos)
         
@@ -406,17 +420,6 @@ with tab_dash:
         qtd_mes = len(df_temp_validos[df_temp_validos["dt_abertura"] >= inicio_mes])
         qtd_ano = len(df_temp_validos[df_temp_validos["dt_abertura"] >= inicio_ano])
 
-        METAS_SLA = {"alta": 4.0, "media": 8.0, "baixa": 78.0}
-
-        def get_sla_target(prioridade):
-            p = str(prioridade).strip().lower().replace("é", "e")
-            for chave, meta in METAS_SLA.items():
-                if chave in p:
-                    return meta
-            return 8.0
-
-        df_calc["Meta_SLA_Horas"] = df_calc["Prioridade"].apply(get_sla_target)
-
         df_concluidos = df_calc.dropna(subset=["dt_conclusao", "dt_abertura"]).copy()
         
         if not df_concluidos.empty:
@@ -425,8 +428,6 @@ with tab_dash:
             ).dt.total_seconds() / 3600.0
             
             df_concluidos = df_concluidos[df_concluidos["Tempo_Resolucao_Horas"] >= 0]
-
-            df_concluidos["Meta_SLA_Horas"] = df_concluidos["Prioridade"].apply(get_sla_target)
             df_concluidos["SLA_Cumprido"] = df_concluidos["Tempo_Resolucao_Horas"] <= df_concluidos["Meta_SLA_Horas"]
 
             df_tmr_operacional = df_concluidos[(df_concluidos["Tempo_Resolucao_Horas"] > 0) & (df_concluidos["Tempo_Resolucao_Horas"] <= 720)]
@@ -436,7 +437,6 @@ with tab_dash:
                 tmr_geral_num = 0.0
         else:
             df_concluidos["Tempo_Resolucao_Horas"] = []
-            df_concluidos["Meta_SLA_Horas"] = []
             df_concluidos["SLA_Cumprido"] = []
             tmr_geral_num = 0.0
 
@@ -514,7 +514,7 @@ with tab_dash:
 
         st.markdown("---")
 
-        # TABELA 1: MONITORAMENTO DE CHAMADOS ATIVOS COM PROBLEMA E IMPACTO
+        # TABELA 1: MONITORAMENTO DE CHAMADOS ATIVOS (AO VIVO 1s)
         def render_secao_monitoramento_ativos(df_input, total_em_aberto):
             st.markdown(f"##### 🚨 Monitoramento Operacional (Chamados Ativos em Aberto: {total_em_aberto})")
             
@@ -701,17 +701,92 @@ with tab_gestao:
     else:
         status_filtro = st.multiselect("Filtrar por Status", ["Pendente", "Atuando", "Concluído"], default=["Pendente", "Atuando"])
         
-        df_filtrado = df[df["Status"].isin(status_filtro)] if status_filtro else df
-        
-        colunas_visiveis = [c for c in ["N*Chamado", "Nº Chamado", "Carimbo de data/hora", "Nome e Setor", "Área do chamado", "Equipamento / Sistema / Local", "Qual é o problema?", "Qual é o impacto na operação?", "Prioridade", "Status", "Técnico Responsável"] if c in df_filtrado.columns]
-        st.dataframe(df_filtrado[colunas_visiveis], use_container_width=True)
+        if df_calc.empty:
+            st.info("Nenhum dado registrado até o momento.")
+        else:
+            agora_gestao = pd.Timestamp(datetime.now(pytz.timezone("America/Sao_Paulo")).replace(tzinfo=None))
+            lista_gestao = []
+
+            for _, row in df_calc.iterrows():
+                st_clean = row.get("Status_Clean", "Pendente")
+                if status_filtro and st_clean not in status_filtro:
+                    continue
+
+                dt_ab = row.get("dt_abertura")
+                dt_conc = row.get("dt_conclusao")
+                meta = row.get("Meta_SLA_Horas", 8.0)
+                raw_ab = extrair_campo(row, ["Carimbo de data/hora", "Carimbo de Data/Hora", "Data/Hora", "Data de Abertura"], "")
+                dt_ab_str = formatar_dt_exibicao(dt_ab, raw_ab)
+
+                if st_clean == "Concluído":
+                    if pd.notna(dt_conc) and pd.notna(dt_ab):
+                        tempo_num = (dt_conc - dt_ab).total_seconds() / 3600.0
+                        sla_ok = tempo_num <= meta
+                        sit_str = "✅ Cumprido" if sla_ok else f"🔴 Estourado (+{formatar_tempo_legivel(tempo_num - meta)})"
+                        tempo_str = formatar_tempo_legivel(tempo_num)
+                    else:
+                        tempo_str = "Concluído"
+                        sit_str = "✅ Concluído"
+                    status_disp = "🟢 Concluído"
+                else:
+                    if pd.notna(dt_ab):
+                        tempo_decorrido = (agora_gestao - dt_ab).total_seconds() / 3600.0
+                        tempo_restante = meta - tempo_decorrido
+                        if tempo_restante < 0:
+                            atraso = abs(tempo_restante)
+                            tempo_str = f"🔴 Estourado (+{formatar_tempo_legivel(atraso)})"
+                            sit_str = f"🔴 Estourado (+{formatar_tempo_legivel(atraso)})"
+                        else:
+                            tempo_str = f"⏳ {formatar_tempo_legivel(tempo_restante)} restantes"
+                            sit_str = f"🟢 No Prazo ({formatar_tempo_legivel(tempo_restante)} restantes)"
+                    else:
+                        tempo_str = "-"
+                        sit_str = "⚪ Sem data de abertura"
+
+                    status_disp = "🟣 Atuando" if st_clean == "Atuando" else "🟡 Pendente"
+
+                lista_gestao.append({
+                    "Nº Chamado": row.get("Num_Chamado_Num"),
+                    "Carimbo de data/hora": dt_ab_str,
+                    "Nome e Setor": row.get("Solicitante_Norm"),
+                    "Área do chamado": row.get("Area_Norm"),
+                    "Qual é o problema?": row.get("Problema_Norm"),
+                    "Prioridade": row.get("Prioridade"),
+                    "Status": status_disp,
+                    "Tempo / SLA": tempo_str,
+                    "Situação SLA": sit_str,
+                    "Técnico Responsável": row.get("Técnico Responsável") if str(row.get("Técnico Responsável")).strip() != "" else "Não atribuído"
+                })
+
+            if lista_gestao:
+                df_gestao_exib = pd.DataFrame(lista_gestao).sort_values("Nº Chamado", ascending=False)
+                df_disp_gestao = df_gestao_exib[["Nº Chamado", "Carimbo de data/hora", "Nome e Setor", "Área do chamado", "Qual é o problema?", "Prioridade", "Status", "Tempo / SLA", "Situação SLA", "Técnico Responsável"]]
+
+                def colorir_linha_gestao(row):
+                    st_val = str(row["Status"])
+                    prio = str(row["Prioridade"]).strip().lower()
+
+                    if "Concluído" in st_val:
+                        return ['background-color: #064E3B; color: #A7F3D0; font-weight: 700;'] * len(row)
+                    else:
+                        if "alta" in prio:
+                            return ['background-color: #7F1D1D; color: #FECDD3; font-weight: 700;'] * len(row)
+                        elif "media" in prio:
+                            return ['background-color: #78350F; color: #FDE68A; font-weight: 700;'] * len(row)
+                        else:
+                            return ['background-color: #1E3A8A; color: #F0F9FF; font-weight: 700;'] * len(row)
+
+                styled_gestao = df_disp_gestao.style.apply(colorir_linha_gestao, axis=1)
+                st.dataframe(styled_gestao, use_container_width=True, hide_index=True)
+            else:
+                st.info("Nenhum chamado encontrado para os filtros selecionados.")
 
         st.markdown("---")
         st.subheader("Atualizar Status de Chamado")
 
         num_chamado = st.number_input("Informe o Nº do Chamado para atualizar", min_value=1, step=1)
         
-        mask_num = df_calc["Num_Chamado_Num"] == num_chamado
+        mask_num = df_calc["Num_Chamado_Num"] == num_chamado if not df_calc.empty else pd.Series([False])
         if mask_num.any():
             idx_linha = df_calc[mask_num].index[0]
             linha_atual = df.iloc[idx_linha]
