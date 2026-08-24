@@ -4,6 +4,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime
 import pytz
+import re
 import plotly.express as px
 import plotly.graph_objects as go
 
@@ -120,32 +121,70 @@ def extrair_campo(row, candidatos, padrao=""):
             return str(row[c]).strip()
     return padrao
 
+def parse_data_infalivel(val):
+    if not val or pd.isna(val):
+        return pd.NaT
+    s = str(val).replace('\xa0', ' ').strip()
+    if s.lower() in ["nan", "none", "", "-", "null"]:
+        return pd.NaT
+    
+    # Regex para extração direta de formato BR
+    m_br = re.search(r'(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?', s)
+    if m_br:
+        d, m, y = int(m_br.group(1)), int(m_br.group(2)), int(m_br.group(3))
+        h = int(m_br.group(4)) if m_br.group(4) is not None else 0
+        mi = int(m_br.group(5)) if m_br.group(5) is not None else 0
+        sec = int(m_br.group(6)) if m_br.group(6) is not None else 0
+        try:
+            return datetime(y, m, d, h, mi, sec)
+        except ValueError:
+            pass
+
+    # Regex para extração ISO
+    m_iso = re.search(r'(\d{4})[/.-](\d{1,2})[/.-](\d{1,2})(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?', s)
+    if m_iso:
+        y, m, d = int(m_iso.group(1)), int(m_iso.group(2)), int(m_iso.group(3))
+        h = int(m_iso.group(4)) if m_iso.group(4) is not None else 0
+        mi = int(m_iso.group(5)) if m_iso.group(5) is not None else 0
+        sec = int(m_iso.group(6)) if m_iso.group(6) is not None else 0
+        try:
+            return datetime(y, m, d, h, mi, sec)
+        except ValueError:
+            pass
+
+    return pd.to_datetime(s, errors="coerce", dayfirst=True)
+
 def extrair_dt_abertura(row):
     val = extrair_campo(row, ["Carimbo de data/hora", "Carimbo de Data/Hora", "Data/Hora", "Data de Abertura", "Data"], "")
-    if not val or str(val).strip().lower() in ["nan", "none", "", "-"]:
-        return pd.NaT
-    dt = pd.to_datetime(val, errors="coerce", dayfirst=True)
-    if pd.isna(dt):
-        dt = pd.to_datetime(val, errors="coerce", dayfirst=False)
-    return dt
+    return parse_data_infalivel(val)
 
-def formatar_dt_exibicao(row):
-    dt = extrair_dt_abertura(row)
+def extrair_dt_conclusao(row):
+    val = extrair_campo(row, ["Data de conclusão", "Data de Conclusão"], "")
+    return parse_data_infalivel(val)
+
+def formatar_dt_exibicao(dt, val_raw=""):
     if pd.notna(dt):
         return dt.strftime("%d/%m/%Y %H:%M")
-    val_raw = extrair_campo(row, ["Carimbo de data/hora", "Carimbo de Data/Hora", "Data/Hora", "Data de Abertura", "Data"], "")
-    return val_raw if val_raw != "" else "-"
+    s = str(val_raw).replace('\xa0', ' ').strip()
+    return s if s not in ["", "nan", "None"] else "-"
 
 def formatar_tempo_legivel(horas):
-    if pd.isna(horas) or horas is None or horas <= 0:
-        return "0h"
-    dias = int(horas // 24)
-    hrs_restantes = round(horas % 24, 1)
-    if hrs_restantes == int(hrs_restantes):
-        hrs_restantes = int(hrs_restantes)
+    if pd.isna(horas) or horas is None or horas < 0:
+        return "0m"
+    total_min = int(round(horas * 60))
+    dias = total_min // (24 * 60)
+    mins_restantes = total_min % (24 * 60)
+    hrs = mins_restantes // 60
+    mins = mins_restantes % 60
+    
+    partes = []
     if dias > 0:
-        return f"{dias}d {hrs_restantes}h"
-    return f"{horas:.1f}h" if isinstance(horas, float) and horas % 1 != 0 else f"{int(horas)}h"
+        partes.append(f"{dias}d")
+    if hrs > 0:
+        partes.append(f"{hrs}h")
+    if mins > 0 or (dias == 0 and hrs == 0):
+        partes.append(f"{mins}m")
+    return " ".join(partes)
 
 def criar_grafico_pareto_limpo(df_input, coluna, titulo, top_n=10):
     if coluna not in df_input.columns or df_input[coluna].dropna().empty:
@@ -332,13 +371,8 @@ with tab_dash:
 
         df_calc["Status_Clean"] = df_calc.apply(obter_status_sanitizado, axis=1)
         
-        df_calc["dt_abertura"] = pd.to_datetime(df_calc.apply(extrair_dt_abertura, axis=1), errors="coerce")
-        if hasattr(df_calc["dt_abertura"].dt, "tz") and df_calc["dt_abertura"].dt.tz is not None:
-            df_calc["dt_abertura"] = df_calc["dt_abertura"].dt.tz_localize(None)
-
-        df_calc["dt_conclusao"] = pd.to_datetime(df_calc["Data de conclusão"].astype(str).str.strip(), errors="coerce", dayfirst=True)
-        if hasattr(df_calc["dt_conclusao"].dt, "tz") and df_calc["dt_conclusao"].dt.tz is not None:
-            df_calc["dt_conclusao"] = df_calc["dt_conclusao"].dt.tz_localize(None)
+        df_calc["dt_abertura"] = df_calc.apply(extrair_dt_abertura, axis=1)
+        df_calc["dt_conclusao"] = df_calc.apply(extrair_dt_conclusao, axis=1)
 
         status_abertos = ["Pendente", "Atuando", "Aberto", "Em andamento"]
         mask_abertos = df_calc["Status_Clean"].isin(status_abertos)
@@ -382,11 +416,11 @@ with tab_dash:
             df_concluidos["Meta_SLA_Horas"] = df_concluidos["Prioridade"].apply(get_sla_target)
             df_concluidos["SLA_Cumprido"] = df_concluidos["Tempo_Resolucao_Horas"] <= df_concluidos["Meta_SLA_Horas"]
 
-            df_tmr_operacional = df_concluidos[df_concluidos["Tempo_Resolucao_Horas"] <= 720]
+            df_tmr_operacional = df_concluidos[(df_concluidos["Tempo_Resolucao_Horas"] > 0) & (df_concluidos["Tempo_Resolucao_Horas"] <= 720)]
             if not df_tmr_operacional.empty:
                 tmr_geral_num = df_tmr_operacional["Tempo_Resolucao_Horas"].median()
             else:
-                tmr_geral_num = df_concluidos["Tempo_Resolucao_Horas"].median()
+                tmr_geral_num = 0.0
         else:
             df_concluidos["Tempo_Resolucao_Horas"] = []
             df_concluidos["Meta_SLA_Horas"] = []
@@ -421,35 +455,39 @@ with tab_dash:
 
         st.markdown("##### 🎯 SLA por Prioridade")
 
-        def cartao_prioridade_neon(col, nome, meta_horas):
-            subset = df_concluidos[
+        def cartao_prioridade_neon(col, nome, meta_horas, cor_borda, cor_texto):
+            sub_concluidos = df_concluidos[
                 df_concluidos["Prioridade"].astype(str).str.lower().str.replace("é", "e", regex=False).str.contains(nome.lower())
             ]
-            total = len(subset)
-            cumpridos = len(subset[subset["SLA_Cumprido"] == True])
-            estourados = total - cumpridos
-            pct = (cumpridos / total * 100) if total > 0 else 100.0
+            total_conc = len(sub_concluidos)
+            cumpridos = len(sub_concluidos[sub_concluidos["SLA_Cumprido"] == True])
+            estourados = total_conc - cumpridos
+            pct = (cumpridos / total_conc * 100) if total_conc > 0 else 100.0
 
-            tmr_num = subset["Tempo_Resolucao_Horas"].median() if total > 0 else 0.0
+            tmr_num = sub_concluidos["Tempo_Resolucao_Horas"].median() if total_conc > 0 else 0.0
 
-            if pct >= 90:
-                border_card, text_glow = "#34D399", "#34D399"
-            elif pct >= 70:
-                border_card, text_glow = "#FBBF24", "#FBBF24"
-            else:
-                border_card, text_glow = "#F87171", "#F87171"
+            sub_ativos = df_calc[
+                df_calc["Prioridade"].astype(str).str.lower().str.replace("é", "e", regex=False).str.contains(nome.lower()) &
+                (df_calc["Status_Clean"] != "Concluído")
+            ]
+            qtd_atuando = len(sub_ativos[sub_ativos["Status_Clean"] == "Atuando"])
+            qtd_pendente = len(sub_ativos[sub_ativos["Status_Clean"] == "Pendente"])
 
             with col:
                 st.markdown(
                     f"""
-                    <div style="background-color:#1E293B; border:1px solid {border_card}; padding:15px; border-radius:12px; margin-bottom:10px;">
+                    <div style="background-color:#1E293B; border:2px solid {cor_borda}; padding:15px; border-radius:12px; margin-bottom:10px;">
                         <div style="display:flex; justify-content:space-between; align-items:center;">
-                            <span style="font-weight:700; color:#F8FAFC; font-size:0.9rem;">{nome}</span>
-                            <span style="font-size:0.75rem; color:#94A3B8;">Meta: {formatar_tempo_legivel(meta_horas)}</span>
+                            <span style="font-weight:800; color:{cor_texto}; font-size:1.1rem;">{nome.upper()}</span>
+                            <span style="font-size:0.8rem; color:#94A3B8; font-weight:600;">Meta: {formatar_tempo_legivel(meta_horas)}</span>
                         </div>
-                        <div style="font-size:1.8rem; font-weight:800; color:{text_glow}; margin:8px 0 2px 0;">{pct:.0f}%</div>
-                        <div style="font-size:0.75rem; color:#CBD5E1;">Conformidade</div>
-                        <div style="margin-top:10px; padding-top:8px; border-top:1px solid #334155; font-size:0.75rem; color:#94A3B8; display:flex; justify-content:space-between;">
+                        <div style="font-size:2rem; font-weight:800; color:{cor_texto}; margin:6px 0 2px 0;">{pct:.0f}% <span style="font-size:0.8rem; color:#CBD5E1; font-weight:400;">Conformidade</span></div>
+                        
+                        <div style="margin-top:8px; padding-top:8px; border-top:1px solid #334155; font-size:0.8rem; color:#CBD5E1; display:flex; justify-content:space-between; flex-wrap:wrap; gap:4px;">
+                            <span>🔵 Atuando: <b style="color:#F8FAFC;">{qtd_atuando}</b></span>
+                            <span>🟡 Pendente: <b style="color:#F8FAFC;">{qtd_pendente}</b></span>
+                        </div>
+                        <div style="margin-top:6px; font-size:0.75rem; color:#94A3B8; display:flex; justify-content:space-between;">
                             <span>✅ {cumpridos} OK · 🔴 {estourados} Fora</span>
                             <span>TMR: <b style="color:#F8FAFC;">{formatar_tempo_legivel(tmr_num)}</b></span>
                         </div>
@@ -459,9 +497,9 @@ with tab_dash:
                 )
 
         col_alta, col_media, col_baixa = st.columns(3)
-        cartao_prioridade_neon(col_alta, "Alta", 4.0)
-        cartao_prioridade_neon(col_media, "Média", 8.0)
-        cartao_prioridade_neon(col_baixa, "Baixa", 78.0)
+        cartao_prioridade_neon(col_alta, "Alta", 4.0, "#EF4444", "#F87171")
+        cartao_prioridade_neon(col_media, "Média", 8.0, "#F59E0B", "#FBBF24")
+        cartao_prioridade_neon(col_baixa, "Baixa", 78.0, "#3B82F6", "#38BDF8")
 
         st.markdown("---")
 
@@ -473,19 +511,22 @@ with tab_dash:
             st_str = str(row.get("Status_Clean", "Pendente"))
             dt_ab = row.get("dt_abertura")
             meta = row.get("Meta_SLA_Horas", 8.0)
+            raw_ab = extrair_campo(row, ["Carimbo de data/hora", "Carimbo de Data/Hora", "Data/Hora", "Data de Abertura"], "")
             
             if st_str != "Concluído":
-                dt_ab_str = formatar_dt_exibicao(row)
+                dt_ab_str = formatar_dt_exibicao(dt_ab, raw_ab)
                 
                 if pd.notna(dt_ab):
-                    tempo = (agora_naive - dt_ab).total_seconds() / 3600.0
-                    estourado = tempo > meta
-                    if estourado:
-                        status_sla = f"🔴 Estourado (+{formatar_tempo_legivel(tempo - meta)})"
+                    tempo_decorrido = (agora_naive - dt_ab).total_seconds() / 3600.0
+                    tempo_restante = meta - tempo_decorrido
+                    
+                    if tempo_restante >= 0:
+                        tempo_dec_str = f"⏳ {formatar_tempo_legivel(tempo_restante)} restantes"
+                        status_sla = f"🟢 No Prazo ({formatar_tempo_legivel(tempo_restante)} restantes)"
                     else:
-                        restante = meta - tempo
-                        status_sla = f"🟢 No Prazo ({formatar_tempo_legivel(restante)} restantes)"
-                    tempo_dec_str = formatar_tempo_legivel(tempo)
+                        atraso = abs(tempo_restante)
+                        tempo_dec_str = f"🔴 Estourado (+{formatar_tempo_legivel(atraso)})"
+                        status_sla = f"🔴 Estourado (+{formatar_tempo_legivel(atraso)})"
                 else:
                     tempo_dec_str = "-"
                     status_sla = "⚪ Sem data de abertura"
@@ -513,9 +554,10 @@ with tab_dash:
                 sit = str(row["Situação SLA"])
                 if "Estourado" in sit or "alta" in prio:
                     return ['background-color: #7F1D1D; color: #FECDD3; font-weight: 700;'] * len(row)
-                elif "No Prazo" in sit:
+                elif "media" in prio:
+                    return ['background-color: #78350F; color: #FDE68A; font-weight: 700;'] * len(row)
+                else:
                     return ['background-color: #064E3B; color: #A7F3D0; font-weight: 700;'] * len(row)
-                return [''] * len(row)
 
             styled_ativos = df_disp_ativos.style.apply(colorir_linha_ativos, axis=1)
             st.dataframe(styled_ativos, use_container_width=True, hide_index=True)
@@ -533,8 +575,9 @@ with tab_dash:
             dt_ab = row.get("dt_abertura")
             dt_conc = row.get("dt_conclusao")
             meta = row.get("Meta_SLA_Horas", 8.0)
+            raw_ab = extrair_campo(row, ["Carimbo de data/hora", "Carimbo de Data/Hora", "Data/Hora", "Data de Abertura"], "")
             
-            dt_ab_str = formatar_dt_exibicao(row)
+            dt_ab_str = formatar_dt_exibicao(dt_ab, raw_ab)
 
             if st_str == "Concluído":
                 if pd.notna(dt_conc) and pd.notna(dt_ab):
@@ -548,13 +591,14 @@ with tab_dash:
                 status_disp = "🟢 Concluído"
             else:
                 if pd.notna(dt_ab):
-                    tempo_num = (agora_naive - dt_ab).total_seconds() / 3600.0
-                    if tempo_num > meta:
-                        sit_str = f"🔴 Estourado (+{formatar_tempo_legivel(tempo_num - meta)})"
+                    tempo_decorrido = (agora_naive - dt_ab).total_seconds() / 3600.0
+                    tempo_restante = meta - tempo_decorrido
+                    if tempo_restante < 0:
+                        sit_str = f"🔴 Estourado (+{formatar_tempo_legivel(abs(tempo_restante))})"
+                        tmr_str = f"🔴 Estourado (+{formatar_tempo_legivel(abs(tempo_restante))})"
                     else:
-                        restante = meta - tempo_num
-                        sit_str = f"🟢 No Prazo ({formatar_tempo_legivel(restante)} restantes)"
-                    tmr_str = formatar_tempo_legivel(tempo_num)
+                        sit_str = f"🟢 No Prazo ({formatar_tempo_legivel(tempo_restante)} restantes)"
+                        tmr_str = f"⏳ {formatar_tempo_legivel(tempo_restante)} restantes"
                 else:
                     tmr_str = "-"
                     sit_str = "⚪ Sem data de abertura"
@@ -586,11 +630,28 @@ with tab_dash:
                 else:
                     if "alta" in prio:
                         return ['background-color: #7F1D1D; color: #FECDD3; font-weight: 700;'] * len(row)
-                    else:
+                    elif "media" in prio:
                         return ['background-color: #78350F; color: #FDE68A; font-weight: 700;'] * len(row)
+                    else:
+                        return ['background-color: #1E3A8A; color: #BFDBFE; font-weight: 700;'] * len(row)
 
             styled_geral = df_disp_geral.style.apply(colorir_linha_geral, axis=1)
             st.dataframe(styled_geral, use_container_width=True, hide_index=True)
+
+        st.markdown("---")
+
+        # TABELA 3: DESEMPENHO POR TÉCNICO
+        st.markdown("##### 👷 Desempenho por Técnico")
+        if "Técnico Responsável" in df_calc.columns and not df_concluidos.empty:
+            tec_stats = df_concluidos.groupby("Técnico Responsável").agg(
+                Atendidos=("Num_Chamado_Num", "count"),
+                TMR_Medio=("Tempo_Resolucao_Horas", "median"),
+                SLA_OK=("SLA_Cumprido", "sum")
+            ).reset_index()
+            tec_stats["SLA (%)"] = (tec_stats["SLA_OK"] / tec_stats["Atendidos"] * 100).round(1)
+            tec_stats["TMR Médio"] = tec_stats["TMR_Medio"].apply(formatar_tempo_legivel)
+            tec_exibicao = tec_stats[["Técnico Responsável", "Atendidos", "TMR Médio", "SLA (%)"]].sort_values("Atendidos", ascending=False)
+            st.dataframe(tec_exibicao, use_container_width=True, hide_index=True)
 
         st.markdown("---")
 
@@ -603,20 +664,6 @@ with tab_dash:
         fig_setor = criar_grafico_pareto_limpo(df_calc, "Area_Norm", "Top Setores Solicitantes", top_n=10)
         if fig_setor:
             st.plotly_chart(fig_setor, use_container_width=True)
-
-        st.markdown("---")
-
-        st.markdown("##### 👷 Desempenho por Técnico")
-        if "Técnico Responsável" in df_calc.columns and not df_concluidos.empty:
-            tec_stats = df_concluidos.groupby("Técnico Responsável").agg(
-                Atendidos=("Num_Chamado_Num", "count"),
-                TMR_Medio=("Tempo_Resolucao_Horas", "median"),
-                SLA_OK=("SLA_Cumprido", "sum")
-            ).reset_index()
-            tec_stats["SLA (%)"] = (tec_stats["SLA_OK"] / tec_stats["Atendidos"] * 100).round(1)
-            tec_stats["TMR Médio"] = tec_stats["TMR_Medio"].apply(formatar_tempo_legivel)
-            tec_exibicao = tec_stats[["Técnico Responsável", "Atendidos", "TMR Médio", "SLA (%)"]].sort_values("Atendidos", ascending=False)
-            st.dataframe(tec_exibicao, use_container_width=True, hide_index=True)
 
 # ABA 3: GESTÃO OPERACIONAL (RESTRITA)
 with tab_gestao:
