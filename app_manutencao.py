@@ -36,13 +36,23 @@ except Exception as e:
     st.error(f"Erro ao conectar com a planilha: {e}")
     st.stop()
 
-# Abas de navegação no topo da página para facilitar em telas de celular
-tab_abrir, tab_gestao, tab_dash = st.tabs(["📌 Abrir Chamado", "⚙️ Gestão Operacional", "📊 Dashboard & SLA"])
+# Navegação lateral
+st.sidebar.title("Sistema de Manutenção")
+menu = st.sidebar.radio("Navegação", ["Abrir Chamado", "Gestão Operacional", "Dashboard & SLA"])
 
+# Trava de Segurança exclusiva para a Gestão Operacional
 SENHA_CORRETA = st.secrets.get("SENHA_GESTAO", "manutencao123")
 
-# --- ABA 1: ABERTURA DE CHAMADO (PÚBLICO) ---
-with tab_abrir:
+if menu == "Gestão Operacional":
+    st.sidebar.markdown("---")
+    senha_digitada = st.sidebar.text_input("Chave de Acesso Operacional", type="password")
+    
+    if senha_digitada != SENHA_CORRETA:
+        st.warning("🔒 Área restrita à equipe de manutenção. Insira a chave de acesso na barra lateral para continuar.")
+        st.stop()
+
+# --- MODULO 1: ABERTURA DE CHAMADO (PÚBLICO) ---
+if menu == "Abrir Chamado":
     st.title("📌 Abertura de Chamado de Manutenção")
     
     with st.form("form_abertura", clear_on_submit=True):
@@ -95,64 +105,59 @@ with tab_abrir:
                 st.success(f"Chamado Nº {proximo_num} registrado com sucesso!")
                 st.cache_resource.clear()
 
-# --- ABA 2: GESTÃO OPERACIONAL (RESTRITO VIA SENHA) ---
-with tab_gestao:
+# --- MODULO 2: GESTÃO OPERACIONAL (RESTRITO) ---
+elif menu == "Gestão Operacional":
     st.title("⚙️ Gestão Operacional de Chamados")
     
-    senha_digitada = st.text_input("Chave de Acesso Operacional", type="password", key="pwd_gestao")
+    status_filtro = st.multiselect("Filtrar por Status", ["Pendente", "Atuando", "Concluído"], default=["Pendente", "Atuando"])
     
-    if senha_digitada != SENHA_CORRETA:
-        st.warning("🔒 Área restrita à equipe de manutenção. Insira a chave de acesso para liberar a edição.")
-    else:
-        status_filtro = st.multiselect("Filtrar por Status", ["Pendente", "Atuando", "Concluído"], default=["Pendente", "Atuando"])
-        
-        df_filtrado = df[df["Status"].isin(status_filtro)] if status_filtro else df
-        
-        colunas_visiveis = [c for c in ["Nº Chamado", "Carimbo de data/hora", "Área do chamado", "Equipamento/Sistema/Local", "Prioridade", "Status", "Técnico Responsável"] if c in df_filtrado.columns]
-        st.dataframe(df_filtrado[colunas_visiveis], use_container_width=True)
+    df_filtrado = df[df["Status"].isin(status_filtro)] if status_filtro else df
+    
+    colunas_visiveis = [c for c in ["Nº Chamado", "Carimbo de data/hora", "Área do chamado", "Equipamento/Sistema/Local", "Prioridade", "Status", "Técnico Responsável"] if c in df_filtrado.columns]
+    st.dataframe(df_filtrado[colunas_visiveis], use_container_width=True)
 
-        st.markdown("---")
-        st.subheader("Atualizar Status de Chamado")
+    st.markdown("---")
+    st.subheader("Atualizar Status de Chamado")
 
-        num_chamado = st.number_input("Informe o Nº do Chamado para atualizar", min_value=1, step=1)
-        
-        if num_chamado in df["Nº Chamado"].values:
-            idx_linha = df[df["Nº Chamado"] == num_chamado].index[0]
-            linha_atual = df.iloc[idx_linha]
+    num_chamado = st.number_input("Informe o Nº do Chamado para atualizar", min_value=1, step=1)
+    
+    if num_chamado in df["Nº Chamado"].values:
+        idx_linha = df[df["Nº Chamado"] == num_chamado].index[0]
+        linha_atual = df.iloc[idx_linha]
 
-            st.info(f"Chamado {num_chamado}: {linha_atual.get('Equipamento/Sistema/Local', '')} (Problema: {linha_atual.get('Qual é o problema?', '')})")
+        st.info(f"Chamado {num_chamado}: {linha_atual.get('Equipamento/Sistema/Local', '')} (Problema: {linha_atual.get('Qual é o problema?', '')})")
 
-            with st.form("form_atualizacao"):
-                col_a, col_b = st.columns(2)
-                with col_a:
-                    status_atual = str(linha_atual.get("Status", "Pendente"))
-                    opcoes_status = ["Pendente", "Atuando", "Concluído"]
-                    idx_st = opcoes_status.index(status_atual) if status_atual in opcoes_status else 0
-                    
-                    novo_status = st.selectbox("Status", opcoes_status, index=idx_st)
-                    
-                    tec_atual = str(linha_atual.get("Técnico Responsável", "Eric"))
-                    opcoes_tec = ["Eric", "Felipe", "Outro"]
-                    idx_tec = opcoes_tec.index(tec_atual) if tec_atual in opcoes_tec else 0
-                    tecnico = st.selectbox("Técnico Responsável", opcoes_tec, index=idx_tec)
+        with st.form("form_atualizacao"):
+            col_a, col_b = st.columns(2)
+            with col_a:
+                status_atual = str(linha_atual.get("Status", "Pendente"))
+                opcoes_status = ["Pendente", "Atuando", "Concluído"]
+                idx_st = opcoes_status.index(status_atual) if status_atual in opcoes_status else 0
                 
-                with col_b:
-                    obs_interna = st.text_area("Observação Interna / Diagnóstico", value=str(linha_atual.get("Observação Interna", "")))
+                novo_status = st.selectbox("Status", opcoes_status, index=idx_st)
+                
+                tec_atual = str(linha_atual.get("Técnico Responsável", "Eric"))
+                opcoes_tec = ["Eric", "Felipe", "Outro"]
+                idx_tec = opcoes_tec.index(tec_atual) if tec_atual in opcoes_tec else 0
+                tecnico = st.selectbox("Técnico Responsável", opcoes_tec, index=idx_tec)
+            
+            with col_b:
+                obs_interna = st.text_area("Observação Interna / Diagnóstico", value=str(linha_atual.get("Observação Interna", "")))
 
-                btn_salvar = st.form_submit_button("Salvar Alterações")
+            btn_salvar = st.form_submit_button("Salvar Alterações")
 
-                if btn_salvar:
-                    linha_excel = idx_linha + 2
-                    
-                    sheet.update_cell(linha_excel, 13, novo_status)
-                    sheet.update_cell(linha_excel, 14, tecnico)
-                    sheet.update_cell(linha_excel, 16, obs_interna)
+            if btn_salvar:
+                linha_excel = idx_linha + 2
+                
+                sheet.update_cell(linha_excel, 13, novo_status)
+                sheet.update_cell(linha_excel, 14, tecnico)
+                sheet.update_cell(linha_excel, 16, obs_interna)
 
-                    st.success(f"Chamado {num_chamado} atualizado para '{novo_status}'. A planilha formatará a linha e inserirá a data automaticamente.")
-                    st.cache_resource.clear()
+                st.success(f"Chamado {num_chamado} atualizado para '{novo_status}'. A planilha formatará a linha e inserirá a data automaticamente.")
+                st.cache_resource.clear()
 
-# --- ABA 3: DASHBOARD & SLA (PÚBLICO) ---
-with tab_dash:
+# --- MODULO 3: DASHBOARD & SLA (PÚBLICO) ---
+elif menu == "Dashboard & SLA":
     st.title("📊 Painel Gerencial & Indicadores SLA")
     
     df_calc = df.copy()
