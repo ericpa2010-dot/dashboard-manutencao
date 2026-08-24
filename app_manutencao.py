@@ -32,6 +32,16 @@ def load_data():
     df = pd.DataFrame(data)
     return sheet, df
 
+# FORMATADOR DE TEMPO LEGÍVEL (Converter horas em Dias e Horas)
+def formatar_tempo_legivel(horas):
+    if pd.isna(horas) or horas is None or horas <= 0:
+        return "0h"
+    if horas < 24:
+        return f"{horas:.1f}h"
+    dias = int(horas // 24)
+    hrs_restantes = int(horas % 24)
+    return f"{dias}d {hrs_restantes}h"
+
 # GERADOR DE PARETO LIMPO (TOP 10 + OUTROS)
 def criar_grafico_pareto_limpo(df_input, coluna, titulo, top_n=10):
     if coluna not in df_input.columns or df_input[coluna].dropna().empty:
@@ -45,14 +55,12 @@ def criar_grafico_pareto_limpo(df_input, coluna, titulo, top_n=10):
     counts = s.value_counts().reset_index()
     counts.columns = [coluna, 'Ocorrências']
     
-    # Agrupa a cauda longa no bloco Outros
     if len(counts) > top_n:
         top_counts = counts.head(top_n).copy()
         outros_qtd = counts.iloc[top_n:]['Ocorrências'].sum()
         outros_df = pd.DataFrame([{coluna: 'Outros (Diversos)', 'Ocorrências': outros_qtd}])
         counts = pd.concat([top_counts, outros_df], ignore_index=True)
     
-    # Encurta textos longos para nao encavalar o eixo X
     counts[coluna] = counts[coluna].apply(lambda x: x[:22] + "..." if len(x) > 22 else x)
     
     counts['Acumulado'] = counts['Ocorrências'].cumsum()
@@ -278,14 +286,21 @@ elif menu == "Dashboard & SLA":
 
         df_concluidos["Meta_SLA_Horas"] = df_concluidos["Prioridade"].apply(get_sla_target)
         df_concluidos["SLA_Cumprido"] = df_concluidos["Tempo_Resolucao_Horas"] <= df_concluidos["Meta_SLA_Horas"]
+        
+        # Filtro de descarte de distorções históricas exageradas (>30 dias) para TMR Operacional Real
+        df_tmr_operacional = df_concluidos[df_concluidos["Tempo_Resolucao_Horas"] <= 720]
+        if not df_tmr_operacional.empty:
+            tmr_geral_num = df_tmr_operacional["Tempo_Resolucao_Horas"].mean()
+        else:
+            tmr_geral_num = df_concluidos["Tempo_Resolucao_Horas"].median()
     else:
         df_concluidos["Tempo_Resolucao_Horas"] = []
         df_concluidos["Meta_SLA_Horas"] = []
         df_concluidos["SLA_Cumprido"] = []
+        tmr_geral_num = 0.0
 
     total_concluidos = len(df_concluidos)
     taxa_conclusao = (total_concluidos / total_chamados * 100) if total_chamados > 0 else 0.0
-    tmr_geral = df_concluidos["Tempo_Resolucao_Horas"].mean() if not df_concluidos.empty else 0.0
     sla_cumprido_pct = (
         (df_concluidos["SLA_Cumprido"].sum() / total_concluidos * 100) if total_concluidos > 0 else 100.0
     )
@@ -294,7 +309,7 @@ elif menu == "Dashboard & SLA":
     c1.metric("Total de Chamados", total_chamados)
     c2.metric("Em Aberto", em_aberto)
     c3.metric("Taxa de Resolução", f"{taxa_conclusao:.0f}%")
-    c4.metric("Tempo Médio (TMR)", f"{tmr_geral:.1f}h")
+    c4.metric("Tempo Médio (TMR)", formatar_tempo_legivel(tmr_geral_num))
     c5.metric("Conformidade SLA Geral", f"{sla_cumprido_pct:.0f}%")
 
     st.markdown("---")
@@ -310,7 +325,10 @@ elif menu == "Dashboard & SLA":
         cumpridos = int(subset["SLA_Cumprido"].sum()) if total else 0
         estourados = total - cumpridos
         pct = (cumpridos / total * 100) if total else 100.0
-        tmr = subset["Tempo_Resolucao_Horas"].mean() if total else 0.0
+        
+        # Filtro local de distorções
+        subset_tmr = subset[subset["Tempo_Resolucao_Horas"] <= 720]
+        tmr_num = subset_tmr["Tempo_Resolucao_Horas"].mean() if not subset_tmr.empty else (subset["Tempo_Resolucao_Horas"].median() if total else 0.0)
 
         if pct >= 90:
             cor_fundo, cor_texto = "#D4EDDA", "#155724"
@@ -323,13 +341,13 @@ elif menu == "Dashboard & SLA":
             st.markdown(
                 f"""
                 <div style="background-color:{cor_fundo}; padding:18px; border-radius:10px; border-left: 8px solid {cor_borda};">
-                    <h4 style="color:{cor_texto}; margin:0 0 8px 0;">{nome} <span style="font-weight:normal; font-size:0.8em;">(meta: {meta_horas:.0f}h)</span></h4>
+                    <h4 style="color:{cor_texto}; margin:0 0 8px 0;">{nome} <span style="font-weight:normal; font-size:0.8em;">(meta: {formatar_tempo_legivel(meta_horas)})</span></h4>
                     <h1 style="color:{cor_texto}; margin:0;">{pct:.0f}%</h1>
                     <p style="color:{cor_texto}; margin:4px 0 0 0;">dentro do prazo</p>
                     <hr style="border-color:{cor_texto}; opacity:0.3; margin:10px 0;">
                     <p style="color:{cor_texto}; margin:0; font-size:0.9em;">
                         ✅ {cumpridos} no prazo &nbsp;·&nbsp; 🔴 {estourados} estourados<br>
-                        ⏱️ Tempo Médio (TMR): {tmr:.1f}h
+                        ⏱️ Tempo Médio (TMR): {formatar_tempo_legivel(tmr_num)}
                     </p>
                 </div>
                 """,
@@ -360,7 +378,6 @@ elif menu == "Dashboard & SLA":
 
     with col_p2:
         df_tempo = df_calc.dropna(subset=["dt_abertura"]).copy()
-        # Filtro estrito removendo datas anteriores a 2024
         df_tempo = df_tempo[df_tempo["dt_abertura"] >= pd.Timestamp("2024-01-01")]
         
         if not df_tempo.empty:
@@ -391,13 +408,16 @@ elif menu == "Dashboard & SLA":
         if "Técnico Responsável" in df_calc.columns and not df_concluidos.empty:
             tec_stats = df_concluidos.groupby("Técnico Responsável").agg(
                 Atendidos=("Nº Chamado", "count"),
-                Tempo_Medio_Horas=("Tempo_Resolucao_Horas", "mean"),
+                Tempo_Medio_Horas=("Tempo_Resolucao_Horas", lambda x: x[x <= 720].mean() if not x[x <= 720].empty else x.median()),
                 SLA_OK_Pct=("SLA_Cumprido", lambda x: (x.sum() / len(x)) * 100),
             ).reset_index()
-            tec_stats["Tempo_Medio_Horas"] = tec_stats["Tempo_Medio_Horas"].round(1)
+            tec_stats["TMR Formatado"] = tec_stats["Tempo_Medio_Horas"].apply(formatar_tempo_legivel)
             tec_stats["SLA_OK_Pct"] = tec_stats["SLA_OK_Pct"].round(1)
-            tec_stats.rename(columns={"Tempo_Medio_Horas": "TMR Médio (h)", "SLA_OK_Pct": "SLA OK (%)"}, inplace=True)
-            st.dataframe(tec_stats, use_container_width=True, hide_index=True)
+            
+            tec_exibicao = tec_stats[["Técnico Responsável", "Atendidos", "TMR Formatado", "SLA_OK_Pct"]].rename(
+                columns={"TMR Formatado": "TMR Médio", "SLA_OK_Pct": "SLA OK (%)"}
+            )
+            st.dataframe(tec_exibicao, use_container_width=True, hide_index=True)
         else:
             st.caption("Aguardando finalização de chamados para consolidação de métricas por técnico.")
 
@@ -407,12 +427,14 @@ elif menu == "Dashboard & SLA":
             fora_sla = df_concluidos[df_concluidos["SLA_Cumprido"] == False].copy()
             if not fora_sla.empty:
                 fora_sla["Atraso_Horas"] = (fora_sla["Tempo_Resolucao_Horas"] - fora_sla["Meta_SLA_Horas"]).round(1)
+                fora_sla["Atraso Formatado"] = fora_sla["Atraso_Horas"].apply(formatar_tempo_legivel)
+                fora_sla["Tempo Resolução"] = fora_sla["Tempo_Resolucao_Horas"].apply(formatar_tempo_legivel)
                 fora_sla = fora_sla.sort_values("Atraso_Horas", ascending=False)
+                
                 colunas_sla = [
                     c for c in [
                         "Nº Chamado", "Área do chamado", "Equipamento/Sistema/Local",
-                        "Prioridade", "Tempo_Resolucao_Horas", "Meta_SLA_Horas",
-                        "Atraso_Horas", "Técnico Responsável",
+                        "Prioridade", "Tempo Resolução", "Atraso Formatado", "Técnico Responsável"
                     ] if c in fora_sla.columns
                 ]
                 st.dataframe(fora_sla[colunas_sla], use_container_width=True, hide_index=True)
