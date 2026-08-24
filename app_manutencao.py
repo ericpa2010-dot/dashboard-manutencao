@@ -325,8 +325,14 @@ with tab_dash:
 
         df_calc["Status_Clean"] = df_calc.apply(obter_status_sanitizado, axis=1)
         
-        df_calc["dt_abertura"] = df_calc.apply(extrair_dt_abertura, axis=1)
+        # Conversao estrita para datetime64[ns]
+        df_calc["dt_abertura"] = pd.to_datetime(df_calc.apply(extrair_dt_abertura, axis=1), errors="coerce")
+        if hasattr(df_calc["dt_abertura"].dt, "tz") and df_calc["dt_abertura"].dt.tz is not None:
+            df_calc["dt_abertura"] = df_calc["dt_abertura"].dt.tz_localize(None)
+
         df_calc["dt_conclusao"] = pd.to_datetime(df_calc["Data de conclusão"].astype(str).str.strip(), errors="coerce", dayfirst=True)
+        if hasattr(df_calc["dt_conclusao"].dt, "tz") and df_calc["dt_conclusao"].dt.tz is not None:
+            df_calc["dt_conclusao"] = df_calc["dt_conclusao"].dt.tz_localize(None)
 
         status_abertos = ["Pendente", "Atuando", "Aberto", "Em andamento"]
         mask_abertos = df_calc["Status_Clean"].isin(status_abertos)
@@ -335,9 +341,10 @@ with tab_dash:
         em_aberto = len(df_calc[mask_abertos])
 
         df_temp_validos = df_calc.dropna(subset=["dt_abertura"]).copy()
+        df_temp_validos["dt_abertura"] = pd.to_datetime(df_temp_validos["dt_abertura"])
         
-        agora_naive = agora_br.replace(tzinfo=None)
-        inicio_hoje = agora_naive.replace(hour=0, minute=0, second=0, microsecond=0)
+        agora_naive = pd.Timestamp(agora_br.replace(tzinfo=None))
+        inicio_hoje = agora_naive.floor("D")
         inicio_semana = inicio_hoje - pd.Timedelta(days=agora_naive.weekday())
         inicio_mes = agora_naive.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         inicio_ano = agora_naive.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -453,7 +460,7 @@ with tab_dash:
 
         st.markdown("---")
 
-        st.markdown("##### 🚨 Monitoramento Operacional de Chamados Ativos (Em Aberto)")
+        st.markdown(f"##### 🚨 Monitoramento Operacional (Todos os Chamados em Aberto: {em_aberto})")
         
         lista_ativos = []
         for _, row in df_calc.iterrows():
@@ -495,23 +502,15 @@ with tab_dash:
             df_ativos = pd.DataFrame(lista_ativos).sort_values("Nº Chamado", ascending=False)
             df_disp = df_ativos[["Nº Chamado", "Abertura", "Área", "Equipamento", "Prioridade", "Status", "Tempo Decorrido", "Situação SLA", "Técnico"]]
             
-            def colorir_situacao(val):
-                v = str(val)
-                if "Estourado" in v:
-                    return "background-color: #7F1D1D; color: #FCA5A5; font-weight: 700;"
-                elif "No Prazo" in v:
-                    return "background-color: #065F46; color: #6EE7B7; font-weight: 700;"
-                return ""
+            def colorir_linha_completa(row):
+                sit = str(row["Situação SLA"])
+                if "Estourado" in sit:
+                    return ['background-color: #7F1D1D; color: #FECDD3; font-weight: 700;'] * len(row)
+                elif "No Prazo" in sit:
+                    return ['background-color: #064E3B; color: #A7F3D0; font-weight: 700;'] * len(row)
+                return [''] * len(row)
 
-            def colorir_status(val):
-                v = str(val)
-                if "Atuando" in v:
-                    return "background-color: #075985; color: #38BDF8; font-weight: 700;"
-                elif "Pendente" in v:
-                    return "background-color: #78350F; color: #FBBF24; font-weight: 700;"
-                return ""
-
-            styled_ativos = df_disp.style.map(colorir_situacao, subset=["Situação SLA"]).map(colorir_status, subset=["Status"])
+            styled_ativos = df_disp.style.apply(colorir_linha_completa, axis=1)
             st.dataframe(styled_ativos, use_container_width=True, hide_index=True)
         else:
             st.success("✅ Nenhum chamado ativo pendente no momento.")
