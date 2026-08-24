@@ -262,7 +262,6 @@ with tab_dash:
 
         df_calc = df.copy()
         
-        # Tratamento de Datas sem conflito de parametros no Pandas 2.x/Python 3.14
         df_calc["dt_abertura"] = pd.to_datetime(df_calc["Carimbo de data/hora"].astype(str).str.strip(), errors="coerce", dayfirst=True)
         df_calc["dt_conclusao"] = pd.to_datetime(df_calc["Data de conclusão"].astype(str).str.strip(), errors="coerce", dayfirst=True)
 
@@ -393,6 +392,64 @@ with tab_dash:
 
         st.markdown("---")
 
+        # TABELA DE ACOMPANHAMENTO DE CHAMADOS ATIVOS (POSICIONADA LOGO ABAIXO DOS CARDS DE SLA)
+        st.markdown("##### 🚨 Monitoramento Operacional de Chamados Ativos (Em Aberto)")
+        
+        lista_ativos = []
+        for _, row in df_calc.iterrows():
+            st_str = str(row.get("Status_Clean", "Pendente"))
+            dt_ab = row.get("dt_abertura")
+            meta = row.get("Meta_SLA_Horas", 8.0)
+            
+            if pd.isna(dt_ab):
+                continue
+
+            if st_str != "Concluído":
+                tempo = (agora_naive - dt_ab).total_seconds() / 3600.0
+                estourado = tempo > meta
+                
+                if estourado:
+                    status_sla = f"🔴 Estourado (+{formatar_tempo_legivel(tempo - meta)})"
+                else:
+                    restante = meta - tempo
+                    status_sla = f"🟢 No Prazo ({formatar_tempo_legivel(restante)} restantes)"
+                
+                num_ch = row.get("Nº Chamado")
+                try:
+                    num_ch = int(num_ch)
+                except (ValueError, TypeError):
+                    pass
+
+                lista_ativos.append({
+                    "Nº Chamado": num_ch,
+                    "Área": row.get("Área do chamado"),
+                    "Equipamento": row.get("Equipamento/Sistema/Local"),
+                    "Prioridade": row.get("Prioridade"),
+                    "Status": st_str,
+                    "Tempo Decorrido": formatar_tempo_legivel(tempo),
+                    "Situação SLA": status_sla,
+                    "Técnico": row.get("Técnico Responsável") if str(row.get("Técnico Responsável")).strip() != "" else "Não atribuído"
+                })
+
+        if lista_ativos:
+            df_ativos = pd.DataFrame(lista_ativos).sort_values("Nº Chamado", ascending=False)
+            df_disp = df_ativos[["Nº Chamado", "Área", "Equipamento", "Prioridade", "Status", "Tempo Decorrido", "Situação SLA", "Técnico"]]
+            
+            def colorir_situacao(val):
+                v = str(val)
+                if "Estourado" in v:
+                    return "background-color: #7F1D1D; color: #FCA5A5; font-weight: 700;"
+                elif "No Prazo" in v:
+                    return "background-color: #065F46; color: #6EE7B7; font-weight: 700;"
+                return ""
+
+            styled_ativos = df_disp.style.map(colorir_situacao, subset=["Situação SLA"])
+            st.dataframe(styled_ativos, use_container_width=True, hide_index=True)
+        else:
+            st.success("✅ Nenhum chamado ativo pendente no momento.")
+
+        st.markdown("---")
+
         fig_equip = criar_grafico_pareto_limpo(df_calc, "Equipamento/Sistema/Local", "Top Equipamentos Críticos", top_n=10)
         if fig_equip:
             st.plotly_chart(fig_equip, use_container_width=True)
@@ -405,83 +462,17 @@ with tab_dash:
 
         st.markdown("---")
 
-        col_t1, col_t2 = st.columns(2)
-
-        with col_t1:
-            st.markdown("##### 👷 Desempenho por Técnico")
-            if "Técnico Responsável" in df_calc.columns and not df_concluidos.empty:
-                tec_stats = df_concluidos.groupby("Técnico Responsável").agg(
-                    Atendidos=("Nº Chamado", "count"),
-                    TMR_Medio=("Tempo_Resolucao_Horas", "median"),
-                    SLA_OK=("SLA_Cumprido", "sum")
-                ).reset_index()
-                tec_stats["SLA (%)"] = (tec_stats["SLA_OK"] / tec_stats["Atendidos"] * 100).round(1)
-                tec_stats["TMR Médio"] = tec_stats["TMR_Medio"].apply(formatar_tempo_legivel)
-                tec_exibicao = tec_stats[["Técnico Responsável", "Atendidos", "TMR Médio", "SLA (%)"]].sort_values("Atendidos", ascending=False)
-                st.dataframe(tec_exibicao, use_container_width=True, hide_index=True)
-            else:
-                st.caption("Aguardando finalização de chamados para consolidação de métricas.")
-
-        with col_t2:
-            st.markdown("##### 🔍 Chamados Ativos e Atrasados (Fora do SLA)")
-            lista_fora = []
-            for _, row in df_calc.iterrows():
-                st_str = str(row.get("Status_Clean", "Pendente"))
-                dt_ab = row.get("dt_abertura")
-                dt_conc = row.get("dt_conclusao")
-                meta = row.get("Meta_SLA_Horas", 8.0)
-                
-                if pd.isna(dt_ab):
-                    continue
-
-                if st_str == "Concluído":
-                    if pd.notna(dt_conc):
-                        tempo = (dt_conc - dt_ab).total_seconds() / 3600.0
-                        if tempo > meta:
-                            lista_fora.append({
-                                "Nº Chamado": row.get("Nº Chamado"),
-                                "Área": row.get("Área do chamado"),
-                                "Equipamento": row.get("Equipamento/Sistema/Local"),
-                                "Prioridade": row.get("Prioridade"),
-                                "Status": "Concluído",
-                                "Tempo Decorrido": formatar_tempo_legivel(tempo),
-                                "Atraso": formatar_tempo_legivel(tempo - meta),
-                                "Atraso_Horas_Num": tempo - meta,
-                                "Técnico": row.get("Técnico Responsável")
-                            })
-                else:
-                    tempo = (agora_naive - dt_ab).total_seconds() / 3600.0
-                    if tempo > meta:
-                        lista_fora.append({
-                            "Nº Chamado": row.get("Nº Chamado"),
-                            "Área": row.get("Área do chamado"),
-                            "Equipamento": row.get("Equipamento/Sistema/Local"),
-                            "Prioridade": row.get("Prioridade"),
-                            "Status": st_str,
-                            "Tempo Decorrido": formatar_tempo_legivel(tempo),
-                            "Atraso": formatar_tempo_legivel(tempo - meta),
-                            "Atraso_Horas_Num": tempo - meta,
-                            "Técnico": row.get("Técnico Responsável")
-                        })
-                        
-            if lista_fora:
-                df_fora_sla = pd.DataFrame(lista_fora).sort_values("Atraso_Horas_Num", ascending=False)
-                df_display = df_fora_sla[["Nº Chamado", "Área", "Equipamento", "Prioridade", "Status", "Tempo Decorrido", "Atraso", "Técnico"]]
-                
-                def colorir_status_dark(val):
-                    v = str(val).strip()
-                    if v == "Concluído":
-                        return "background-color: #065F46; color: #34D399; font-weight: 700;"
-                    elif v in ["Pendente", "Aberto"]:
-                        return "background-color: #78350F; color: #FBBF24; font-weight: 700;"
-                    elif v in ["Atuando", "Em andamento"]:
-                        return "background-color: #075985; color: #38BDF8; font-weight: 700;"
-                    return ""
-                
-                styled_df = df_display.style.map(colorir_status_dark, subset=["Status"])
-                st.dataframe(styled_df, use_container_width=True, hide_index=True)
-            else:
-                st.success("✅ Operação em conformidade: nenhum chamado fora do prazo registrado.")
+        st.markdown("##### 👷 Desempenho por Técnico")
+        if "Técnico Responsável" in df_calc.columns and not df_concluidos.empty:
+            tec_stats = df_concluidos.groupby("Técnico Responsável").agg(
+                Atendidos=("Nº Chamado", "count"),
+                TMR_Medio=("Tempo_Resolucao_Horas", "median"),
+                SLA_OK=("SLA_Cumprido", "sum")
+            ).reset_index()
+            tec_stats["SLA (%)"] = (tec_stats["SLA_OK"] / tec_stats["Atendidos"] * 100).round(1)
+            tec_stats["TMR Médio"] = tec_stats["TMR_Medio"].apply(formatar_tempo_legivel)
+            tec_exibicao = tec_stats[["Técnico Responsável", "Atendidos", "TMR Médio", "SLA (%)"]].sort_values("Atendidos", ascending=False)
+            st.dataframe(tec_exibicao, use_container_width=True, hide_index=True)
 
 # ABA 3: GESTÃO OPERACIONAL (RESTRITA)
 with tab_gestao:
