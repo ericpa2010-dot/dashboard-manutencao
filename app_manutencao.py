@@ -27,7 +27,6 @@ st.markdown("""
        font-weight: 700 !important;
    }
 
-   /* Abas Nativas Responsivas */
    div[data-baseweb="tab-list"] {
        gap: 8px;
        background-color: #0F172A;
@@ -96,10 +95,8 @@ def get_gspread_client():
         "https://www.googleapis.com/auth/drive"
     ]
     creds_dict = dict(st.secrets["gcp_service_account"])
-    
     if "private_key" in creds_dict:
         creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
-        
     creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
     return gspread.authorize(creds)
 
@@ -116,6 +113,12 @@ try:
 except Exception as e:
     st.error(f"Erro ao conectar com a planilha: {e}")
     st.stop()
+
+def extrair_campo(row, candidatos, padrao=""):
+    for c in candidatos:
+        if c in row.index and pd.notna(row[c]) and str(row[c]).strip() != "":
+            return str(row[c]).strip()
+    return padrao
 
 def formatar_tempo_legivel(horas):
     if pd.isna(horas) or horas is None or horas <= 0:
@@ -238,13 +241,34 @@ with tab_abertura:
             else:
                 fuso_br = pytz.timezone("America/Sao_Paulo")
                 agora = datetime.now(fuso_br).strftime("%Y-%m-%d %H:%M:%S")
-                proximo_num = len(df) + 1
+                
+                headers = [str(h).strip() for h in sheet.row_values(1)]
+                nova_linha = [""] * len(headers)
+                
+                def preencher(nome_coluna, valor):
+                    if nome_coluna in headers:
+                        idx = headers.index(nome_coluna)
+                        nova_linha[idx] = valor
 
-                nova_linha = [
-                    proximo_num, agora, email, nome_setor, area, equipamento,
-                    problema, observado, testado, impacto, prioridade,
-                    info_adicional, "Pendente", "", "", ""
-                ]
+                proximo_num = len(df) + 1
+                
+                preencher("N*Chamado", proximo_num)
+                preencher("Nº Chamado", proximo_num)
+                preencher("Carimbo de data/hora", agora)
+                preencher("Endereço de e-mail", email)
+                preencher("Nome e Setor", nome_setor)
+                preencher("Área do chamado", area)
+                preencher("Equipamento / Sistema / Local", equipamento)
+                preencher("Máquina ou Equipamento", equipamento)
+                preencher("Qual é o problema?", problema)
+                preencher("Descrição do chamado", problema)
+                preencher("Tipo de problema", problema)
+                preencher("O que foi observado?", observado)
+                preencher("O que já foi feito / testado?", testado)
+                preencher("Qual é o impacto na operação?", impacto)
+                preencher("Prioridade", prioridade)
+                preencher("Informação adicional", info_adicional)
+                preencher("Status", "Pendente")
 
                 sheet.append_row(nova_linha)
                 st.success(f"Chamado Nº {proximo_num} registrado com sucesso!")
@@ -262,11 +286,30 @@ with tab_dash:
 
         df_calc = df.copy()
         
+        df_calc["Num_Chamado_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["N*Chamado", "Nº Chamado", "N° Chamado"], "0"), axis=1)
+        df_calc["Num_Chamado_Num"] = pd.to_numeric(df_calc["Num_Chamado_Norm"], errors="coerce").fillna(0).astype(int)
+        
+        df_calc["Equipamento_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["Equipamento / Sistema / Local", "Equipamento/Sistema/Local", "Máquina ou Equipamento"], "Não informado"), axis=1)
+        df_calc["Problema_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["Qual é o problema?", "Descrição do chamado", "Tipo de problema"], "Sem descrição"), axis=1)
+        df_calc["Area_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["Área do chamado", "Nome e Setor"], "Geral"), axis=1)
+        
+        def obter_status_sanitizado(r):
+            st_val = extrair_campo(r, ["Status"], "").capitalize()
+            if st_val in ["Pendente", "Concluído", "Concluido", "Atuando", "Aberto", "Em andamento"]:
+                return "Concluído" if "Conclu" in st_val else st_val
+            st_col13 = str(r.get("Coluna 13", "")).strip().capitalize()
+            if st_col13 in ["Pendente", "Concluído", "Concluido", "Atuando", "Aberto"]:
+                return "Concluído" if "Conclu" in st_col13 else st_col13
+            st_eq = str(r.get("Equipamento / Sistema / Local", "")).strip().capitalize()
+            if st_eq in ["Pendente", "Concluído", "Concluido", "Atuando", "Aberto"]:
+                return "Concluído" if "Conclu" in st_eq else st_eq
+            return "Pendente"
+
+        df_calc["Status_Clean"] = df_calc.apply(obter_status_sanitizado, axis=1)
+        
         df_calc["dt_abertura"] = pd.to_datetime(df_calc["Carimbo de data/hora"].astype(str).str.strip(), errors="coerce", dayfirst=True)
         df_calc["dt_conclusao"] = pd.to_datetime(df_calc["Data de conclusão"].astype(str).str.strip(), errors="coerce", dayfirst=True)
 
-        df_calc["Status_Clean"] = df_calc["Status"].astype(str).str.strip().str.capitalize()
-        
         status_abertos = ["Pendente", "Atuando", "Aberto", "Em andamento"]
         mask_abertos = df_calc["Status_Clean"].isin(status_abertos)
         
@@ -392,7 +435,6 @@ with tab_dash:
 
         st.markdown("---")
 
-        # TABELA DE ACOMPANHAMENTO DE CHAMADOS ATIVOS (POSICIONADA LOGO ABAIXO DOS CARDS DE SLA)
         st.markdown("##### 🚨 Monitoramento Operacional de Chamados Ativos (Em Aberto)")
         
         lista_ativos = []
@@ -401,32 +443,25 @@ with tab_dash:
             dt_ab = row.get("dt_abertura")
             meta = row.get("Meta_SLA_Horas", 8.0)
             
-            if pd.isna(dt_ab):
-                continue
-
             if st_str != "Concluído":
-                tempo = (agora_naive - dt_ab).total_seconds() / 3600.0
-                estourado = tempo > meta
+                tempo = (agora_naive - dt_ab).total_seconds() / 3600.0 if pd.notna(dt_ab) else 0.0
+                estourado = tempo > meta if pd.notna(dt_ab) else False
                 
-                if estourado:
+                if pd.isna(dt_ab):
+                    status_sla = "⚪ Sem data de abertura"
+                elif estourado:
                     status_sla = f"🔴 Estourado (+{formatar_tempo_legivel(tempo - meta)})"
                 else:
                     restante = meta - tempo
                     status_sla = f"🟢 No Prazo ({formatar_tempo_legivel(restante)} restantes)"
-                
-                num_ch = row.get("Nº Chamado")
-                try:
-                    num_ch = int(num_ch)
-                except (ValueError, TypeError):
-                    pass
 
                 lista_ativos.append({
-                    "Nº Chamado": num_ch,
-                    "Área": row.get("Área do chamado"),
-                    "Equipamento": row.get("Equipamento/Sistema/Local"),
+                    "Nº Chamado": row.get("Num_Chamado_Num"),
+                    "Área": row.get("Area_Norm"),
+                    "Equipamento": row.get("Equipamento_Norm"),
                     "Prioridade": row.get("Prioridade"),
                     "Status": st_str,
-                    "Tempo Decorrido": formatar_tempo_legivel(tempo),
+                    "Tempo Decorrido": formatar_tempo_legivel(tempo) if pd.notna(dt_ab) else "-",
                     "Situação SLA": status_sla,
                     "Técnico": row.get("Técnico Responsável") if str(row.get("Técnico Responsável")).strip() != "" else "Não atribuído"
                 })
@@ -450,13 +485,13 @@ with tab_dash:
 
         st.markdown("---")
 
-        fig_equip = criar_grafico_pareto_limpo(df_calc, "Equipamento/Sistema/Local", "Top Equipamentos Críticos", top_n=10)
+        fig_equip = criar_grafico_pareto_limpo(df_calc, "Equipamento_Norm", "Top Equipamentos Críticos", top_n=10)
         if fig_equip:
             st.plotly_chart(fig_equip, use_container_width=True)
 
         st.markdown("---")
 
-        fig_setor = criar_grafico_pareto_limpo(df_calc, "Área do chamado", "Top Setores Solicitantes", top_n=10)
+        fig_setor = criar_grafico_pareto_limpo(df_calc, "Area_Norm", "Top Setores Solicitantes", top_n=10)
         if fig_setor:
             st.plotly_chart(fig_setor, use_container_width=True)
 
@@ -465,7 +500,7 @@ with tab_dash:
         st.markdown("##### 👷 Desempenho por Técnico")
         if "Técnico Responsável" in df_calc.columns and not df_concluidos.empty:
             tec_stats = df_concluidos.groupby("Técnico Responsável").agg(
-                Atendidos=("Nº Chamado", "count"),
+                Atendidos=("Num_Chamado_Num", "count"),
                 TMR_Medio=("Tempo_Resolucao_Horas", "median"),
                 SLA_OK=("SLA_Cumprido", "sum")
             ).reset_index()
@@ -487,7 +522,7 @@ with tab_gestao:
         
         df_filtrado = df[df["Status"].isin(status_filtro)] if status_filtro else df
         
-        colunas_visiveis = [c for c in ["Nº Chamado", "Carimbo de data/hora", "Área do chamado", "Equipamento/Sistema/Local", "Prioridade", "Status", "Técnico Responsável"] if c in df_filtrado.columns]
+        colunas_visiveis = [c for c in ["N*Chamado", "Nº Chamado", "Carimbo de data/hora", "Área do chamado", "Equipamento / Sistema / Local", "Prioridade", "Status", "Técnico Responsável"] if c in df_filtrado.columns]
         st.dataframe(df_filtrado[colunas_visiveis], use_container_width=True)
 
         st.markdown("---")
@@ -495,14 +530,17 @@ with tab_gestao:
 
         num_chamado = st.number_input("Informe o Nº do Chamado para atualizar", min_value=1, step=1)
         
-        if num_chamado in df["Nº Chamado"].values:
-            idx_linha = df[df["Nº Chamado"] == num_chamado].index[0]
+        mask_num = df_calc["Num_Chamado_Num"] == num_chamado
+        if mask_num.any():
+            idx_linha = df_calc[mask_num].index[0]
             linha_atual = df.iloc[idx_linha]
 
-            st.info(f"Chamado {num_chamado}: {linha_atual.get('Equipamento/Sistema/Local', '')}")
+            st.info(f"Chamado {num_chamado}: {extrair_campo(linha_atual, ['Equipamento / Sistema / Local', 'Máquina ou Equipamento'])}")
 
             with st.form("form_atualizacao"):
                 col_a, col_b = st.columns(2)
+                headers = [str(h).strip() for h in sheet.row_values(1)]
+                
                 with col_a:
                     status_atual = str(linha_atual.get("Status", "Pendente"))
                     opcoes_status = ["Pendente", "Atuando", "Concluído"]
@@ -522,9 +560,19 @@ with tab_gestao:
 
                 if btn_salvar:
                     linha_excel = idx_linha + 2
-                    sheet.update_cell(linha_excel, 13, novo_status)
-                    sheet.update_cell(linha_excel, 14, tecnico)
-                    sheet.update_cell(linha_excel, 16, obs_interna)
+                    
+                    if "Status" in headers:
+                        sheet.update_cell(linha_excel, headers.index("Status") + 1, novo_status)
+                    if "Técnico Responsável" in headers:
+                        sheet.update_cell(linha_excel, headers.index("Técnico Responsável") + 1, tecnico)
+                    if "Observação Interna" in headers:
+                        sheet.update_cell(linha_excel, headers.index("Observação Interna") + 1, obs_interna)
+                    elif "Observação" in headers:
+                        sheet.update_cell(linha_excel, headers.index("Observação") + 1, obs_interna)
+                    if novo_status == "Concluído" and "Data de conclusão" in headers:
+                        fuso_br = pytz.timezone("America/Sao_Paulo")
+                        data_conc = datetime.now(fuso_br).strftime("%d/%m/%Y %H:%M:%S")
+                        sheet.update_cell(linha_excel, headers.index("Data de conclusão") + 1, data_conc)
 
-                    st.success(f"Chamado {num_chamado} atualizado!")
+                    st.success(f"Chamado {num_chamado} atualizado para '{novo_status}'!")
                     st.cache_resource.clear()
