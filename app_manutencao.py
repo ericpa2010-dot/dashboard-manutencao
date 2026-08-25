@@ -268,10 +268,14 @@ def criar_grafico_pareto_limpo(df_input, coluna, titulo, top_n=10):
 
 SENHA_CORRETA = st.secrets.get("SENHA_GESTAO", "manutencao123")
 
-# PROCESSAMENTO DE DADOS UNIFICADO
+# PROCESSAMENTO DE DADOS UNIFICADO (FILTRO DE 90 DIAS + ANISTIA LEGADA)
 if not df.empty:
     fuso_br = pytz.timezone("America/Sao_Paulo")
     agora_br = datetime.now(fuso_br)
+    agora_naive_geral = pd.Timestamp(agora_br.replace(tzinfo=None))
+    
+    DATA_CORTE = pd.Timestamp(2026, 8, 23, 0, 0, 0)
+    LIMITE_90_DIAS = agora_naive_geral - pd.Timedelta(days=90)
 
     df_calc = df.copy()
     
@@ -309,7 +313,10 @@ if not df.empty:
     df_calc["dt_abertura"] = df_calc.apply(extrair_dt_abertura, axis=1)
     df_calc["dt_conclusao"] = df_calc.apply(extrair_dt_conclusao, axis=1)
 
-    METAS_SLA = {"alta": 4.0, "media": 8.0, "baixa": 78.0}
+    # FILTRO DE JANELA DOS ÚLTIMOS 90 DIAS
+    df_calc = df_calc[df_calc["dt_abertura"].isna() | (df_calc["dt_abertura"] >= LIMITE_90_DIAS)].copy()
+
+    METAS_SLA = {"alta": 4.0, "media": 8.0, "baixa": 48.0}
 
     def get_sla_target(prioridade):
         p = str(prioridade).strip().lower().replace("é", "e")
@@ -396,7 +403,7 @@ with tab_abertura:
 
 # ABA 2: DASHBOARD
 with tab_dash:
-    st.title("📊 Painel Gerencial & SLA")
+    st.title("📊 Painel Gerencial & SLA (Janela: Últimos 90 Dias)")
 
     if df_calc.empty:
         st.info("Nenhum dado registrado na planilha até o momento.")
@@ -409,7 +416,6 @@ with tab_dash:
 
         df_temp_validos = df_calc.dropna(subset=["dt_abertura"]).copy()
         
-        agora_naive_geral = pd.Timestamp(agora_br.replace(tzinfo=None))
         inicio_hoje = agora_naive_geral.floor("D")
         inicio_semana = inicio_hoje - pd.Timedelta(days=agora_naive_geral.weekday())
         inicio_mes = agora_naive_geral.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -428,7 +434,11 @@ with tab_dash:
             ).dt.total_seconds() / 3600.0
             
             df_concluidos = df_concluidos[df_concluidos["Tempo_Resolucao_Horas"] >= 0]
-            df_concluidos["SLA_Cumprido"] = df_concluidos["Tempo_Resolucao_Horas"] <= df_concluidos["Meta_SLA_Horas"]
+            
+            df_concluidos["SLA_Cumprido"] = df_concluidos.apply(
+                lambda r: True if (pd.notna(r["dt_abertura"]) and r["dt_abertura"] < DATA_CORTE) else (r["Tempo_Resolucao_Horas"] <= r["Meta_SLA_Horas"]),
+                axis=1
+            )
 
             df_tmr_operacional = df_concluidos[(df_concluidos["Tempo_Resolucao_Horas"] > 0) & (df_concluidos["Tempo_Resolucao_Horas"] <= 720)]
             if not df_tmr_operacional.empty:
@@ -447,13 +457,13 @@ with tab_dash:
         )
 
         c1, c2, c3 = st.columns(3)
-        c1.metric("Total Chamados", total_chamados)
+        c1.metric("Total Chamados (90d)", total_chamados)
         c2.metric("Em Aberto", em_aberto)
         c3.metric("Taxa Resolução", f"{taxa_conclusao:.0f}%")
 
         c4, c5 = st.columns(2)
         c4.metric("Tempo Médio (TMR Mediano)", formatar_tempo_legivel(tmr_geral_num))
-        c5.metric("Conformidade SLA", f"{sla_cumprido_pct:.0f}%")
+        c5.metric("Conformidade SLA Legado+Atual", f"{sla_cumprido_pct:.0f}%")
 
         st.markdown("---")
 
@@ -466,25 +476,24 @@ with tab_dash:
 
         st.markdown("---")
 
-        st.markdown("##### 🎯 SLA por Prioridade")
+        st.markdown("##### 📊 Proporção por Prioridade (% do Volume Total)")
 
-        def cartao_prioridade_neon(col, nome, meta_horas, cor_borda, cor_texto):
+        def cartao_prioridade_porcentagem(col, nome, meta_horas, cor_borda, cor_texto):
+            sub_total_prio = df_calc[
+                df_calc["Prioridade"].astype(str).str.lower().str.replace("é", "e", regex=False).str.contains(nome.lower())
+            ]
+            qtd_prio = len(sub_total_prio)
+            pct_proporcao = (qtd_prio / total_chamados * 100) if total_chamados > 0 else 100.0
+
+            sub_ativos = sub_total_prio[sub_total_prio["Status_Clean"] != "Concluído"]
+            qtd_atuando = len(sub_ativos[sub_ativos["Status_Clean"] == "Atuando"])
+            qtd_pendente = len(sub_ativos[sub_ativos["Status_Clean"] == "Pendente"])
+            qtd_concluido = qtd_prio - (qtd_atuando + qtd_pendente)
+
             sub_concluidos = df_concluidos[
                 df_concluidos["Prioridade"].astype(str).str.lower().str.replace("é", "e", regex=False).str.contains(nome.lower())
             ]
-            total_conc = len(sub_concluidos)
-            cumpridos = len(sub_concluidos[sub_concluidos["SLA_Cumprido"] == True])
-            estourados = total_conc - cumpridos
-            pct = (cumpridos / total_conc * 100) if total_conc > 0 else 100.0
-
-            tmr_num = sub_concluidos["Tempo_Resolucao_Horas"].median() if total_conc > 0 else 0.0
-
-            sub_ativos = df_calc[
-                df_calc["Prioridade"].astype(str).str.lower().str.replace("é", "e", regex=False).str.contains(nome.lower()) &
-                (df_calc["Status_Clean"] != "Concluído")
-            ]
-            qtd_atuando = len(sub_ativos[sub_ativos["Status_Clean"] == "Atuando"])
-            qtd_pendente = len(sub_ativos[sub_ativos["Status_Clean"] == "Pendente"])
+            tmr_num = sub_concluidos["Tempo_Resolucao_Horas"].median() if not sub_concluidos.empty else 0.0
 
             html_card = textwrap.dedent(f"""
                 <div style="background-color:#1E293B; border:2px solid {cor_borda}; padding:15px; border-radius:12px; margin-bottom:10px;">
@@ -492,13 +501,13 @@ with tab_dash:
                         <span style="font-weight:800; color:{cor_texto}; font-size:1.1rem;">{nome.upper()}</span>
                         <span style="font-size:0.8rem; color:#94A3B8; font-weight:600;">Meta: {formatar_tempo_legivel(meta_horas)}</span>
                     </div>
-                    <div style="font-size:2rem; font-weight:800; color:{cor_texto}; margin:6px 0 2px 0;">{pct:.0f}% <span style="font-size:0.8rem; color:#CBD5E1; font-weight:400;">Conformidade</span></div>
+                    <div style="font-size:2rem; font-weight:800; color:{cor_texto}; margin:6px 0 2px 0;">{pct_proporcao:.1f}% <span style="font-size:0.8rem; color:#CBD5E1; font-weight:400;">({qtd_prio} de {total_chamados})</span></div>
                     <div style="margin-top:8px; padding-top:8px; border-top:1px solid #334155; font-size:0.8rem; color:#CBD5E1; display:flex; justify-content:space-between; flex-wrap:wrap; gap:4px;">
                         <span>🟣 Atuando: <b style="color:#C084FC;">{qtd_atuando}</b></span>
                         <span>🟡 Pendente: <b style="color:#FBBF24;">{qtd_pendente}</b></span>
                     </div>
                     <div style="margin-top:6px; font-size:0.75rem; color:#94A3B8; display:flex; justify-content:space-between;">
-                        <span>✅ {cumpridos} OK · 🔴 {estourados} Fora</span>
+                        <span>🟢 Concluídos: <b style="color:#34D399;">{qtd_concluido}</b></span>
                         <span>TMR: <b style="color:#F8FAFC;">{formatar_tempo_legivel(tmr_num)}</b></span>
                     </div>
                 </div>
@@ -508,9 +517,9 @@ with tab_dash:
                 st.markdown(html_card, unsafe_allow_html=True)
 
         col_alta, col_media, col_baixa = st.columns(3)
-        cartao_prioridade_neon(col_alta, "Alta", 4.0, "#EF4444", "#F87171")
-        cartao_prioridade_neon(col_media, "Média", 8.0, "#F59E0B", "#FBBF24")
-        cartao_prioridade_neon(col_baixa, "Baixa", 78.0, "#0284C7", "#38BDF8")
+        cartao_prioridade_porcentagem(col_alta, "Alta", 4.0, "#EF4444", "#F87171")
+        cartao_prioridade_porcentagem(col_media, "Média", 8.0, "#F59E0B", "#FBBF24")
+        cartao_prioridade_porcentagem(col_baixa, "Baixa", 48.0, "#0284C7", "#38BDF8")
 
         st.markdown("---")
 
@@ -530,7 +539,10 @@ with tab_dash:
                 if st_str != "Concluído":
                     dt_ab_str = formatar_dt_exibicao(dt_ab, raw_ab)
                     
-                    if pd.notna(dt_ab):
+                    if pd.notna(dt_ab) and dt_ab < DATA_CORTE:
+                        tempo_dec_str = "✅ Anistia (Legado)"
+                        status_sla = "🟢 Cumprido (Legado)"
+                    elif pd.notna(dt_ab):
                         tempo_decorrido = (agora_loop - dt_ab).total_seconds() / 3600.0
                         tempo_restante = meta - tempo_decorrido
                         
@@ -589,7 +601,7 @@ with tab_dash:
         st.markdown("---")
 
         # TABELA 2: HISTÓRICO GERAL DE CHAMADOS
-        st.markdown(f"##### 📋 Histórico Geral de Chamados & SLA (Total: {total_chamados})")
+        st.markdown(f"##### 📋 Histórico Geral de Chamados & SLA (Total 90d: {total_chamados})")
 
         lista_geral = []
         for _, row in df_calc.iterrows():
@@ -601,7 +613,11 @@ with tab_dash:
             
             dt_ab_str = formatar_dt_exibicao(dt_ab, raw_ab)
 
-            if st_str == "Concluído":
+            if pd.notna(dt_ab) and dt_ab < DATA_CORTE:
+                tmr_str = formatar_tempo_legivel((dt_conc - dt_ab).total_seconds() / 3600.0) if pd.notna(dt_conc) else "Legado"
+                sit_str = "✅ Cumprido (Legado)"
+                status_disp = "🟢 Concluído" if st_str == "Concluído" else ("🟣 Atuando" if st_str == "Atuando" else "🟡 Pendente")
+            elif st_str == "Concluído":
                 if pd.notna(dt_conc) and pd.notna(dt_ab):
                     tempo_num = (dt_conc - dt_ab).total_seconds() / 3600.0
                     sla_ok = tempo_num <= meta
@@ -718,7 +734,11 @@ with tab_gestao:
                 raw_ab = extrair_campo(row, ["Carimbo de data/hora", "Carimbo de Data/Hora", "Data/Hora", "Data de Abertura"], "")
                 dt_ab_str = formatar_dt_exibicao(dt_ab, raw_ab)
 
-                if st_clean == "Concluído":
+                if pd.notna(dt_ab) and dt_ab < DATA_CORTE:
+                    tempo_str = "✅ Anistia (Legado)"
+                    sit_str = "✅ Cumprido (Legado)"
+                    status_disp = "🟢 Concluído" if st_clean == "Concluído" else ("🟣 Atuando" if st_clean == "Atuando" else "🟡 Pendente")
+                elif st_clean == "Concluído":
                     if pd.notna(dt_conc) and pd.notna(dt_ab):
                         tempo_num = (dt_conc - dt_ab).total_seconds() / 3600.0
                         sla_ok = tempo_num <= meta
