@@ -90,7 +90,7 @@ st.markdown("""
    </style>
 """, unsafe_allow_html=True)
 
-@st.cache_resource(ttl=60)
+@st.cache_resource(ttl=30)
 def get_gspread_client():
     scope = [
         "https://www.googleapis.com/auth/spreadsheets",
@@ -268,14 +268,13 @@ def criar_grafico_pareto_limpo(df_input, coluna, titulo, top_n=10):
 
 SENHA_CORRETA = st.secrets.get("SENHA_GESTAO", "manutencao123")
 
-# PROCESSAMENTO COMPLETO DE DADOS (BASE GERAL PRESERVADA)
+# TRATAMENTO DE DADOS UNIFICADO
 if not df.empty:
     fuso_br = pytz.timezone("America/Sao_Paulo")
     agora_br = datetime.now(fuso_br)
     agora_naive_geral = pd.Timestamp(agora_br.replace(tzinfo=None))
     
     DATA_CORTE = pd.Timestamp(2026, 8, 23, 0, 0, 0)
-    LIMITE_90_DIAS = agora_naive_geral - pd.Timedelta(days=90)
 
     df_calc = df.copy()
     
@@ -323,12 +322,8 @@ if not df.empty:
         return 8.0
 
     df_calc["Meta_SLA_Horas"] = df_calc["Prioridade"].apply(get_sla_target)
-
-    # SUBSET ESPECÍFICO PARA OS INDICADORES DOS ÚLTIMOS 90 DIAS
-    df_90d = df_calc[df_calc["dt_abertura"].isna() | (df_calc["dt_abertura"] >= LIMITE_90_DIAS)].copy()
 else:
     df_calc = pd.DataFrame()
-    df_90d = pd.DataFrame()
 
 tab_abertura, tab_dash, tab_gestao = st.tabs(["📌 Abrir Chamado", "📊 Dashboard & SLA", "⚙️ Gestão Operacional"])
 
@@ -404,16 +399,40 @@ with tab_abertura:
 
 # ABA 2: DASHBOARD
 with tab_dash:
-    st.title("📊 Painel Gerencial & SLA")
+    col_titulo, col_filtro = st.columns([3, 1])
+    with col_titulo:
+        st.title("📊 Painel Gerencial & SLA")
+    with col_filtro:
+        opcao_periodo = st.selectbox(
+            "Filtro dos Indicadores",
+            ["Últimos 90 dias", "Últimos 30 dias", "Este Mês", "Este Ano", "Todo o Histórico"],
+            index=0
+        )
 
     if df_calc.empty:
         st.info("Nenhum dado registrado na planilha até o momento.")
     else:
+        # APLICAÇÃO DO FILTRO SELECIONADO PELO USUÁRIO
+        if opcao_periodo == "Últimos 30 dias":
+            limite_dt = agora_naive_geral - pd.Timedelta(days=30)
+            df_indicadores = df_calc[df_calc["dt_abertura"].isna() | (df_calc["dt_abertura"] >= limite_dt)].copy()
+        elif opcao_periodo == "Últimos 90 dias":
+            limite_dt = agora_naive_geral - pd.Timedelta(days=90)
+            df_indicadores = df_calc[df_calc["dt_abertura"].isna() | (df_calc["dt_abertura"] >= limite_dt)].copy()
+        elif opcao_periodo == "Este Mês":
+            limite_dt = agora_naive_geral.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            df_indicadores = df_calc[df_calc["dt_abertura"].isna() | (df_calc["dt_abertura"] >= limite_dt)].copy()
+        elif opcao_periodo == "Este Ano":
+            limite_dt = agora_naive_geral.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+            df_indicadores = df_calc[df_calc["dt_abertura"].isna() | (df_calc["dt_abertura"] >= limite_dt)].copy()
+        else:
+            df_indicadores = df_calc.copy()
+
         status_abertos = ["Pendente", "Atuando", "Aberto", "Em andamento"]
         mask_abertos = df_calc["Status_Clean"].isin(status_abertos)
         
         total_chamados_geral = len(df_calc)
-        total_chamados_90d = len(df_90d)
+        total_chamados_periodo = len(df_indicadores)
         em_aberto = len(df_calc[mask_abertos])
 
         df_temp_validos = df_calc.dropna(subset=["dt_abertura"]).copy()
@@ -478,15 +497,15 @@ with tab_dash:
 
         st.markdown("---")
 
-        st.markdown("##### 📊 Proporção por Prioridade (% de Volume nos Últimos 90 Dias)")
+        st.markdown(f"##### 📊 Carga de Trabalho por Prioridade ({opcao_periodo}: {total_chamados_periodo} chamados)")
 
         def cartao_prioridade_porcentagem(col, nome, meta_horas, cor_borda, cor_texto):
-            sub_total_prio = df_90d[
-                df_90d["Prioridade"].astype(str).str.lower().str.replace("é", "e", regex=False).str.contains(nome.lower())
-            ] if not df_90d.empty else pd.DataFrame()
+            sub_total_prio = df_indicadores[
+                df_indicadores["Prioridade"].astype(str).str.lower().str.replace("é", "e", regex=False).str.contains(nome.lower())
+            ] if not df_indicadores.empty else pd.DataFrame()
             
             qtd_prio = len(sub_total_prio)
-            pct_proporcao = (qtd_prio / total_chamados_90d * 100) if total_chamados_90d > 0 else 100.0
+            pct_proporcao = (qtd_prio / total_chamados_periodo * 100) if total_chamados_periodo > 0 else 100.0
 
             if not sub_total_prio.empty:
                 sub_ativos = sub_total_prio[sub_total_prio["Status_Clean"] != "Concluído"]
@@ -508,7 +527,7 @@ with tab_dash:
                         <span style="font-weight:800; color:{cor_texto}; font-size:1.1rem;">{nome.upper()}</span>
                         <span style="font-size:0.8rem; color:#94A3B8; font-weight:600;">Meta: {formatar_tempo_legivel(meta_horas)}</span>
                     </div>
-                    <div style="font-size:2rem; font-weight:800; color:{cor_texto}; margin:6px 0 2px 0;">{pct_proporcao:.1f}% <span style="font-size:0.8rem; color:#CBD5E1; font-weight:400;">({qtd_prio} de {total_chamados_90d})</span></div>
+                    <div style="font-size:2rem; font-weight:800; color:{cor_texto}; margin:6px 0 2px 0;">{pct_proporcao:.1f}% <span style="font-size:0.85rem; color:#CBD5E1; font-weight:600;">({qtd_prio} chamados)</span></div>
                     <div style="margin-top:8px; padding-top:8px; border-top:1px solid #334155; font-size:0.8rem; color:#CBD5E1; display:flex; justify-content:space-between; flex-wrap:wrap; gap:4px;">
                         <span>🟣 Atuando: <b style="color:#C084FC;">{qtd_atuando}</b></span>
                         <span>🟡 Pendente: <b style="color:#FBBF24;">{qtd_pendente}</b></span>
@@ -607,7 +626,7 @@ with tab_dash:
 
         st.markdown("---")
 
-        # TABELA 2: HISTÓRICO GERAL COMPLETO (TOTALIDADE DOS CHAMADOS - Ex: 665)
+        # TABELA 2: HISTÓRICO GERAL COMPLETO (EX: 665)
         st.markdown(f"##### 📋 Histórico Geral de Chamados & SLA (Total: {total_chamados_geral})")
 
         lista_geral = []
