@@ -566,7 +566,7 @@ with tab_dash:
 
         st.markdown("---")
 
-        # TABELA 1: MONITORAMENTO DE CHAMADOS ATIVOS COM BARRA DE VIDA DINÂMICA
+        # TABELA 1: MONITORAMENTO DE CHAMADOS ATIVOS COM OCULTAÇÃO DO CAMPO TÉCNICO PCT_NUM
         def render_secao_monitoramento_ativos(df_input, total_em_aberto):
             st.markdown(f"##### 🚨 Monitoramento Operacional (Chamados Ativos em Aberto: {total_em_aberto})")
             
@@ -618,25 +618,26 @@ with tab_dash:
                         "Status": status_formatado,
                         "Saúde SLA": status_sla,
                         "Tempo Restante": tempo_dec_str,
-                        "pct_num": pct_vida,
-                        "Técnico": row.get("Técnico Responsável") if str(row.get("Técnico Responsável")).strip() != "" else "Não atribuído"
+                        "Técnico": row.get("Técnico Responsável") if str(row.get("Técnico Responsável")).strip() != "" else "Não atribuído",
+                        "pct_num": pct_vida
                     })
 
             if lista_ativos:
                 df_ativos = pd.DataFrame(lista_ativos).sort_values("Nº", ascending=False)
-                df_disp_ativos = df_ativos[["Nº", "Solicitante", "Abertura", "Área", "Equipamento", "Descrição do Problema", "Impacto", "Prioridade", "Status", "Saúde SLA", "Tempo Restante", "Técnico", "pct_num"]]
+                
+                colunas_exibicao = ["Nº", "Solicitante", "Abertura", "Área", "Equipamento", "Descrição do Problema", "Impacto", "Prioridade", "Status", "Saúde SLA", "Tempo Restante", "Técnico"]
                 
                 def colorir_linha_barra_vida(row):
                     pct = row["pct_num"]
                     if pct > 50.0:
-                        return ['background-color: #064E3B; color: #A7F3D0; font-weight: 700;'] * (len(row)-1) + ['display: none;']
+                        return ['background-color: #064E3B; color: #A7F3D0; font-weight: 700;'] * len(row)
                     elif pct > 20.0:
-                        return ['background-color: #78350F; color: #FDE68A; font-weight: 700;'] * (len(row)-1) + ['display: none;']
+                        return ['background-color: #78350F; color: #FDE68A; font-weight: 700;'] * len(row)
                     else:
-                        return ['background-color: #7F1D1D; color: #FECDD3; font-weight: 700;'] * (len(row)-1) + ['display: none;']
+                        return ['background-color: #7F1D1D; color: #FECDD3; font-weight: 700;'] * len(row)
 
-                styled_ativos = df_disp_ativos.style.apply(colorir_linha_barra_vida, axis=1)
-                st.dataframe(styled_ativos, use_container_width=True, hide_index=True)
+                styled_ativos = df_ativos.style.apply(colorir_linha_barra_vida, axis=1)
+                st.dataframe(styled_ativos, column_order=colunas_exibicao, use_container_width=True, hide_index=True)
             else:
                 st.success("✅ Nenhum chamado ativo pendente no momento.")
 
