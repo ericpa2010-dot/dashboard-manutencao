@@ -1,6 +1,7 @@
 ﻿import streamlit as st
 import pandas as pd
 import gspread
+from gspread.utils import rowcol_to_a1
 from google.oauth2.service_account import Credentials
 from datetime import datetime
 import pytz
@@ -90,7 +91,7 @@ st.markdown("""
    </style>
 """, unsafe_allow_html=True)
 
-@st.cache_resource(ttl=30)
+@st.cache_resource(ttl=60)
 def get_gspread_client():
     scope = [
         "https://www.googleapis.com/auth/spreadsheets",
@@ -102,19 +103,9 @@ def get_gspread_client():
     creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
     return gspread.authorize(creds)
 
-def load_data():
+def get_sheet():
     client = get_gspread_client()
-    sheet = client.open_by_url(st.secrets["spreadsheet"]["url"]).worksheet("CHAMADOS")
-    data = sheet.get_all_records()
-    df = pd.DataFrame(data)
-    df.columns = [str(col).strip() for col in df.columns]
-    return sheet, df
-
-try:
-    sheet, df = load_data()
-except Exception as e:
-    st.error(f"Erro ao conectar com a planilha: {e}")
-    st.stop()
+    return client.open_by_url(st.secrets["spreadsheet"]["url"]).worksheet("CHAMADOS")
 
 def extrair_campo(row, candidatos, padrao=""):
     for c in candidatos:
@@ -188,6 +179,68 @@ def formatar_tempo_legivel(horas):
     if secs > 0 or not partes:
         partes.append(f"{secs}s")
     return " ".join(partes)
+
+def sanitizar_prioridade_universal(r):
+    p_raw = str(extrair_campo(r, ["Prioridade", "Prioridade Sugerida"], "")).strip().lower()
+    if "alt" in p_raw:
+        return "Alta"
+    elif "med" in p_raw or "méd" in p_raw:
+        return "Média"
+    elif "baix" in p_raw:
+        return "Baixa"
+    return "Média"
+
+def obter_status_sanitizado(r):
+    dt_conc = extrair_campo(r, ["Data de conclusão", "Data de Conclusão"], "")
+    if dt_conc != "" and dt_conc != "nan" and dt_conc != "None":
+        return "Concluído"
+    
+    st_raw = str(extrair_campo(r, ["Status"], "")).strip().upper()
+    if "ATUAND" in st_raw or "ANDAMENTO" in st_raw:
+        return "Atuando"
+    if "CONCLU" in st_raw:
+        return "Concluído"
+    if "PENDENT" in st_raw or "ABERTO" in st_raw:
+        return "Pendente"
+        
+    st_col13 = str(r.get("Coluna 13", "")).strip().upper()
+    if "ATUAND" in st_col13:
+        return "Atuando"
+    if "CONCLU" in st_col13:
+        return "Concluído"
+        
+    return "Pendente"
+
+# OTIMIZAÇÃO CRÍTICA: TRATAMENTO DE DADOS EXECUTADO DENTRO DO CACHE (EXTREMAMENTE RÁPIDO)
+@st.cache_data(ttl=30)
+def load_and_process_data():
+    sheet = get_sheet()
+    data = sheet.get_all_records()
+    df = pd.DataFrame(data)
+    if df.empty:
+        return df, df
+    
+    df.columns = [str(col).strip() for col in df.columns]
+    df_calc = df.copy()
+    
+    df_calc["Num_Chamado_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["N*Chamado", "Nº Chamado", "N° Chamado"], "0"), axis=1)
+    df_calc["Num_Chamado_Num"] = pd.to_numeric(df_calc["Num_Chamado_Norm"], errors="coerce").fillna(0).astype(int)
+    
+    df_calc["Solicitante_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["Nome e Setor", "Nome e Setor Solicitante", "Solicitante", "Nome"], "Não informado"), axis=1)
+    df_calc["Equipamento_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["Equipamento / Sistema / Local", "Equipamento/Sistema/Local", "Máquina ou Equipamento"], "Não informado"), axis=1)
+    df_calc["Problema_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["Qual é o problema?", "Descrição do chamado", "Tipo de problema"], "Sem descrição"), axis=1)
+    df_calc["Impacto_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["Qual é o impacto na operação?", "Impacto na operação", "Impacto"], "Não informado"), axis=1)
+    df_calc["Area_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["Área do chamado", "Nome e Setor"], "Geral"), axis=1)
+    
+    df_calc["Prioridade_Clean"] = df_calc.apply(sanitizar_prioridade_universal, axis=1)
+    df_calc["Status_Clean"] = df_calc.apply(obter_status_sanitizado, axis=1)
+    df_calc["dt_abertura"] = df_calc.apply(extrair_dt_abertura, axis=1)
+    df_calc["dt_conclusao"] = df_calc.apply(extrair_dt_conclusao, axis=1)
+
+    METAS_SLA = {"Alta": 4.0, "Média": 8.0, "Baixa": 48.0}
+    df_calc["Meta_SLA_Horas"] = df_calc["Prioridade_Clean"].map(METAS_SLA).fillna(8.0)
+    
+    return df, df_calc
 
 def criar_grafico_pareto_limpo(df_input, coluna, titulo, top_n=10):
     if coluna not in df_input.columns or df_input[coluna].dropna().empty:
@@ -268,66 +321,17 @@ def criar_grafico_pareto_limpo(df_input, coluna, titulo, top_n=10):
 
 SENHA_CORRETA = st.secrets.get("SENHA_GESTAO", "manutencao123")
 
-# PROCESSAMENTO DE DADOS COM SANITIZAÇÃO RIGOROSA
-if not df.empty:
+try:
+    df_raw, df_calc = load_and_process_data()
+except Exception as e:
+    st.error(f"Erro ao conectar com a planilha: {e}")
+    st.stop()
+
+if not df_calc.empty:
     fuso_br = pytz.timezone("America/Sao_Paulo")
     agora_br = datetime.now(fuso_br)
     agora_naive_geral = pd.Timestamp(agora_br.replace(tzinfo=None))
-    
     DATA_CORTE = pd.Timestamp(2026, 8, 23, 0, 0, 0)
-
-    df_calc = df.copy()
-    
-    df_calc["Num_Chamado_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["N*Chamado", "Nº Chamado", "N° Chamado"], "0"), axis=1)
-    df_calc["Num_Chamado_Num"] = pd.to_numeric(df_calc["Num_Chamado_Norm"], errors="coerce").fillna(0).astype(int)
-    
-    df_calc["Solicitante_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["Nome e Setor", "Nome e Setor Solicitante", "Solicitante", "Nome"], "Não informado"), axis=1)
-    df_calc["Equipamento_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["Equipamento / Sistema / Local", "Equipamento/Sistema/Local", "Máquina ou Equipamento"], "Não informado"), axis=1)
-    df_calc["Problema_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["Qual é o problema?", "Descrição do chamado", "Tipo de problema"], "Sem descrição"), axis=1)
-    df_calc["Impacto_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["Qual é o impacto na operação?", "Impacto na operação", "Impacto"], "Não informado"), axis=1)
-    df_calc["Area_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["Área do chamado", "Nome e Setor"], "Geral"), axis=1)
-    
-    def sanitizar_prioridade_universal(r):
-        p_raw = str(extrair_campo(r, ["Prioridade", "Prioridade Sugerida"], "")).strip().lower()
-        if "alt" in p_raw:
-            return "Alta"
-        elif "med" in p_raw or "méd" in p_raw:
-            return "Média"
-        elif "baix" in p_raw:
-            return "Baixa"
-        return "Média"
-
-    df_calc["Prioridade_Clean"] = df_calc.apply(sanitizar_prioridade_universal, axis=1)
-
-    def obter_status_sanitizado(r):
-        dt_conc = extrair_campo(r, ["Data de conclusão", "Data de Conclusão"], "")
-        if dt_conc != "" and dt_conc != "nan" and dt_conc != "None":
-            return "Concluído"
-        
-        st_raw = str(extrair_campo(r, ["Status"], "")).strip().upper()
-        if "ATUAND" in st_raw or "ANDAMENTO" in st_raw:
-            return "Atuando"
-        if "CONCLU" in st_raw:
-            return "Concluído"
-        if "PENDENT" in st_raw or "ABERTO" in st_raw:
-            return "Pendente"
-            
-        st_col13 = str(r.get("Coluna 13", "")).strip().upper()
-        if "ATUAND" in st_col13:
-            return "Atuando"
-        if "CONCLU" in st_col13:
-            return "Concluído"
-            
-        return "Pendente"
-
-    df_calc["Status_Clean"] = df_calc.apply(obter_status_sanitizado, axis=1)
-    df_calc["dt_abertura"] = df_calc.apply(extrair_dt_abertura, axis=1)
-    df_calc["dt_conclusao"] = df_calc.apply(extrair_dt_conclusao, axis=1)
-
-    METAS_SLA = {"Alta": 4.0, "Média": 8.0, "Baixa": 48.0}
-    df_calc["Meta_SLA_Horas"] = df_calc["Prioridade_Clean"].map(METAS_SLA).fillna(8.0)
-else:
-    df_calc = pd.DataFrame()
 
 tab_abertura, tab_dash, tab_gestao = st.tabs(["📌 Abrir Chamado", "📊 Dashboard & SLA", "⚙️ Gestão Operacional"])
 
@@ -366,6 +370,7 @@ with tab_abertura:
             if faltantes:
                 st.error(f"⚠️ Preenchimento obrigatório para: {', '.join(faltantes)}.")
             else:
+                sheet = get_sheet()
                 fuso_br = pytz.timezone("America/Sao_Paulo")
                 agora = datetime.now(fuso_br).strftime("%d/%m/%Y %H:%M:%S")
                 
@@ -377,7 +382,7 @@ with tab_abertura:
                         idx = headers.index(nome_coluna)
                         nova_linha[idx] = valor
 
-                proximo_num = len(df) + 1
+                proximo_num = len(df_calc) + 1
                 
                 preencher("N*Chamado", proximo_num)
                 preencher("Nº Chamado", proximo_num)
@@ -399,7 +404,7 @@ with tab_abertura:
 
                 sheet.append_row(nova_linha)
                 st.success(f"Chamado Nº {proximo_num} registrado com sucesso!")
-                st.cache_resource.clear()
+                st.cache_data.clear()
 
 # ABA 2: DASHBOARD
 with tab_dash:
@@ -566,7 +571,7 @@ with tab_dash:
 
         st.markdown("---")
 
-        # TABELA 1: MONITORAMENTO DE CHAMADOS ATIVOS COM OCULTAÇÃO DO CAMPO TÉCNICO PCT_NUM
+        # TABELA 1: MONITORAMENTO DE CHAMADOS ATIVOS
         def render_secao_monitoramento_ativos(df_input, total_em_aberto):
             st.markdown(f"##### 🚨 Monitoramento Operacional (Chamados Ativos em Aberto: {total_em_aberto})")
             
@@ -624,7 +629,6 @@ with tab_dash:
 
             if lista_ativos:
                 df_ativos = pd.DataFrame(lista_ativos).sort_values("Nº", ascending=False)
-                
                 colunas_exibicao = ["Nº", "Solicitante", "Abertura", "Área", "Equipamento", "Descrição do Problema", "Impacto", "Prioridade", "Status", "Saúde SLA", "Tempo Restante", "Técnico"]
                 
                 def colorir_linha_barra_vida(row):
@@ -648,8 +652,12 @@ with tab_dash:
 
         st.markdown("---")
 
-        # TABELA 2: HISTÓRICO GERAL COMPLETO (665 CHAMADOS)
-        st.markdown(f"##### 📋 Histórico Geral de Chamados & SLA (Total: {total_chamados_geral})")
+        # TABELA 2: HISTÓRICO GERAL COMPLETO COM SELETOR DE LIMITE (EVITA TRAVAR A TELA DA FÁBRICA)
+        col_hist_tit, col_hist_lim = st.columns([3, 1])
+        with col_hist_tit:
+            st.markdown(f"##### 📋 Histórico Geral de Chamados & SLA (Total: {total_chamados_geral})")
+        with col_hist_lim:
+            limite_exibicao = st.selectbox("Exibir no histórico:", [50, 100, 200, "Todos"], index=0)
 
         lista_geral = []
         for _, row in df_calc.iterrows():
@@ -708,6 +716,9 @@ with tab_dash:
 
         if lista_geral:
             df_geral = pd.DataFrame(lista_geral).sort_values("Nº", ascending=False)
+            if limite_exibicao != "Todos":
+                df_geral = df_geral.head(int(limite_exibicao))
+                
             df_disp_geral = df_geral[["Nº", "Solicitante", "Abertura", "Área", "Equipamento", "Descrição do Problema", "Impacto", "Prioridade", "Status", "Tempo / TMR", "Situação SLA", "Técnico"]]
 
             def colorir_linha_geral(row):
@@ -857,12 +868,13 @@ with tab_gestao:
         mask_num = df_calc["Num_Chamado_Num"] == num_chamado if not df_calc.empty else pd.Series([False])
         if mask_num.any():
             idx_linha = df_calc[mask_num].index[0]
-            linha_atual = df.iloc[idx_linha]
+            linha_atual = df_raw.iloc[idx_linha]
 
             st.info(f"Chamado {num_chamado}: {extrair_campo(linha_atual, ['Equipamento / Sistema / Local', 'Máquina ou Equipamento'])}")
 
             with st.form("form_atualizacao"):
                 col_a, col_b = st.columns(2)
+                sheet = get_sheet()
                 headers = [str(h).strip() for h in sheet.row_values(1)]
                 
                 with col_a:
@@ -884,19 +896,29 @@ with tab_gestao:
 
                 if btn_salvar:
                     linha_excel = idx_linha + 2
+                    updates_lote = []
                     
+                    # UNIFICAÇÃO DE EDICÕES VIA BATCH UPDATE (REDUZ CHAMADAS HTTP DE 4 PARA 1)
                     if "Status" in headers:
-                        sheet.update_cell(linha_excel, headers.index("Status") + 1, novo_status)
+                        col_idx = headers.index("Status") + 1
+                        updates_lote.append({'range': rowcol_to_a1(linha_excel, col_idx), 'values': [[novo_status]]})
                     if "Técnico Responsável" in headers:
-                        sheet.update_cell(linha_excel, headers.index("Técnico Responsável") + 1, tecnico)
+                        col_idx = headers.index("Técnico Responsável") + 1
+                        updates_lote.append({'range': rowcol_to_a1(linha_excel, col_idx), 'values': [[tecnico]]})
                     if "Observação Interna" in headers:
-                        sheet.update_cell(linha_excel, headers.index("Observação Interna") + 1, obs_interna)
+                        col_idx = headers.index("Observação Interna") + 1
+                        updates_lote.append({'range': rowcol_to_a1(linha_excel, col_idx), 'values': [[obs_interna]]})
                     elif "Observação" in headers:
-                        sheet.update_cell(linha_excel, headers.index("Observação") + 1, obs_interna)
+                        col_idx = headers.index("Observação") + 1
+                        updates_lote.append({'range': rowcol_to_a1(linha_excel, col_idx), 'values': [[obs_interna]]})
                     if novo_status == "Concluído" and "Data de conclusão" in headers:
                         fuso_br = pytz.timezone("America/Sao_Paulo")
                         data_conc = datetime.now(fuso_br).strftime("%d/%m/%Y %H:%M:%S")
-                        sheet.update_cell(linha_excel, headers.index("Data de conclusão") + 1, data_conc)
+                        col_idx = headers.index("Data de conclusão") + 1
+                        updates_lote.append({'range': rowcol_to_a1(linha_excel, col_idx), 'values': [[data_conc]]})
 
-                    st.success(f"Chamado {num_chamado} atualizado para '{novo_status}'!")
-                    st.cache_resource.clear()
+                    if updates_lote:
+                        sheet.batch_update(updates_lote)
+
+                    st.success(f"Chamado {num_chamado} atualizado com sucesso!")
+                    st.cache_data.clear()
