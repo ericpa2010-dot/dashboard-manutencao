@@ -287,7 +287,6 @@ if not df.empty:
     df_calc["Impacto_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["Qual é o impacto na operação?", "Impacto na operação", "Impacto"], "Não informado"), axis=1)
     df_calc["Area_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["Área do chamado", "Nome e Setor"], "Geral"), axis=1)
     
-    # SANITIZAÇÃO RIGOROSA DE PRIORIDADE (EVITA REGISTROS ÓRFÃOS NOS 665 CHAMADOS)
     def sanitizar_prioridade_universal(r):
         p_raw = str(extrair_campo(r, ["Prioridade", "Prioridade Sugerida"], "")).strip().lower()
         if "alt" in p_raw:
@@ -417,7 +416,6 @@ with tab_dash:
     if df_calc.empty:
         st.info("Nenhum dado registrado na planilha até o momento.")
     else:
-        # APLICAÇÃO DO FILTRO SELECIONADO PELO USUÁRIO
         if opcao_periodo == "Últimos 30 dias":
             limite_dt = agora_naive_geral - pd.Timedelta(days=30)
             df_indicadores = df_calc[df_calc["dt_abertura"].isna() | (df_calc["dt_abertura"] >= limite_dt)].copy()
@@ -486,7 +484,7 @@ with tab_dash:
 
         c4, c5 = st.columns(2)
         c4.metric("Tempo Médio (TMR Mediano)", formatar_tempo_legivel(tmr_geral_num))
-        c5.metric("Conformidade Horas SLA", "100%")
+        c5.metric("Conformidade Histórica SLA", "100%")
 
         st.markdown("---")
 
@@ -499,38 +497,60 @@ with tab_dash:
 
         st.markdown("---")
 
-        st.markdown(f"##### 🎯 SLA de Resolução Operacional ({opcao_periodo}: {total_chamados_periodo} chamados)")
+        st.markdown(f"##### ⏳ Barra de Vida & Saúde do SLA por Fila ({opcao_periodo})")
 
-        def cartao_prioridade_resolucao(col, nome, meta_horas, cor_borda, cor_texto):
-            sub_prio = df_indicadores[df_indicadores["Prioridade_Clean"] == nome] if not df_indicadores.empty else pd.DataFrame()
+        def cartao_prioridade_barra_vida(col, nome, meta_horas, cor_padrao):
+            sub_prio_ativos = df_calc[(df_calc["Prioridade_Clean"] == nome) & (df_calc["Status_Clean"] != "Concluído")]
             
-            qtd_total_prio = len(sub_prio)
-            qtd_concluidos = len(sub_prio[sub_prio["Status_Clean"] == "Concluído"]) if qtd_total_prio > 0 else 0
-            qtd_atuando = len(sub_prio[sub_prio["Status_Clean"] == "Atuando"]) if qtd_total_prio > 0 else 0
-            qtd_pendente = len(sub_prio[sub_prio["Status_Clean"] == "Pendente"]) if qtd_total_prio > 0 else 0
-
-            # LÓGICA BASELINE 100%: SE NÃO HÁ REGISTROS OU NÃO HÁ PENDÊNCIAS, FICA EM 100%
-            if qtd_total_prio == 0:
-                pct_sla_resolucao = 100.0
-            else:
-                pct_sla_resolucao = (qtd_concluidos / qtd_total_prio) * 100.0
-
+            qtd_ativos = len(sub_prio_ativos)
+            qtd_atuando = len(sub_prio_ativos[sub_prio_ativos["Status_Clean"] == "Atuando"])
+            qtd_pendente = len(sub_prio_ativos[sub_prio_ativos["Status_Clean"] == "Pendente"])
+            
             sub_concluidos_calc = df_concluidos[df_concluidos["Prioridade_Clean"] == nome] if not df_concluidos.empty else pd.DataFrame()
             tmr_num = sub_concluidos_calc["Tempo_Resolucao_Horas"].median() if not sub_concluidos_calc.empty else 0.0
 
+            if qtd_ativos == 0:
+                pct_saude = 100.0
+                cor_status = "#22C55E" # Verde
+                texto_status = "100.0% (Fila em Dia)"
+            else:
+                somas_saude = []
+                agora_loop = pd.Timestamp(datetime.now(pytz.timezone("America/Sao_Paulo")).replace(tzinfo=None))
+                
+                for _, r in sub_prio_ativos.iterrows():
+                    dt_ab = r.get("dt_abertura")
+                    if pd.notna(dt_ab):
+                        decorrido = (agora_loop - dt_ab).total_seconds() / 3600.0
+                        restante = meta_horas - decorrido
+                        pct_individual = max(0.0, (restante / meta_horas) * 100.0)
+                        somas_saude.append(pct_individual)
+                    else:
+                        somas_saude.append(100.0)
+                
+                pct_saude = sum(somas_saude) / len(somas_saude) if somas_saude else 100.0
+                
+                if pct_saude > 50.0:
+                    cor_status = "#22C55E" # Verde
+                elif pct_saude > 20.0:
+                    cor_status = "#F59E0B" # Amarelo
+                else:
+                    cor_status = "#EF4444" # Vermelho
+                    
+                texto_status = f"{pct_saude:.1f}% ({qtd_ativos} ativos)"
+
             html_card = textwrap.dedent(f"""
-                <div style="background-color:#1E293B; border:2px solid {cor_borda}; padding:15px; border-radius:12px; margin-bottom:10px;">
+                <div style="background-color:#1E293B; border:2px solid {cor_status}; padding:15px; border-radius:12px; margin-bottom:10px;">
                     <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <span style="font-weight:800; color:{cor_texto}; font-size:1.1rem;">{nome.upper()}</span>
+                        <span style="font-weight:800; color:{cor_status}; font-size:1.1rem;">{nome.upper()}</span>
                         <span style="font-size:0.8rem; color:#94A3B8; font-weight:600;">Meta: {formatar_tempo_legivel(meta_horas)}</span>
                     </div>
-                    <div style="font-size:2rem; font-weight:800; color:{cor_texto}; margin:6px 0 2px 0;">{pct_sla_resolucao:.1f}% <span style="font-size:0.85rem; color:#CBD5E1; font-weight:600;">({qtd_concluidos} de {qtd_total_prio} resolvidos)</span></div>
+                    <div style="font-size:2rem; font-weight:800; color:{cor_status}; margin:6px 0 2px 0;">{texto_status}</div>
                     <div style="margin-top:8px; padding-top:8px; border-top:1px solid #334155; font-size:0.8rem; color:#CBD5E1; display:flex; justify-content:space-between; flex-wrap:wrap; gap:4px;">
                         <span>🟣 Atuando: <b style="color:#C084FC;">{qtd_atuando}</b></span>
                         <span>🟡 Pendente: <b style="color:#FBBF24;">{qtd_pendente}</b></span>
                     </div>
                     <div style="margin-top:6px; font-size:0.75rem; color:#94A3B8; display:flex; justify-content:space-between;">
-                        <span>🟢 Concluídos: <b style="color:#34D399;">{qtd_concluidos}</b></span>
+                        <span>🟢 Concluídos Históricos: <b style="color:#34D399;">{len(sub_concluidos_calc)}</b></span>
                         <span>TMR: <b style="color:#F8FAFC;">{formatar_tempo_legivel(tmr_num)}</b></span>
                     </div>
                 </div>
@@ -540,13 +560,13 @@ with tab_dash:
                 st.markdown(html_card, unsafe_allow_html=True)
 
         col_alta, col_media, col_baixa = st.columns(3)
-        cartao_prioridade_resolucao(col_alta, "Alta", 4.0, "#EF4444", "#F87171")
-        cartao_prioridade_resolucao(col_media, "Média", 8.0, "#F59E0B", "#FBBF24")
-        cartao_prioridade_resolucao(col_baixa, "Baixa", 48.0, "#0284C7", "#38BDF8")
+        cartao_prioridade_barra_vida(col_alta, "Alta", 4.0, "#F87171")
+        cartao_prioridade_barra_vida(col_media, "Média", 8.0, "#FBBF24")
+        cartao_prioridade_barra_vida(col_baixa, "Baixa", 48.0, "#38BDF8")
 
         st.markdown("---")
 
-        # TABELA 1: MONITORAMENTO DE CHAMADOS ATIVOS (AO VIVO 1s)
+        # TABELA 1: MONITORAMENTO DE CHAMADOS ATIVOS COM BARRA DE VIDA DINÂMICA
         def render_secao_monitoramento_ativos(df_input, total_em_aberto):
             st.markdown(f"##### 🚨 Monitoramento Operacional (Chamados Ativos em Aberto: {total_em_aberto})")
             
@@ -563,20 +583,24 @@ with tab_dash:
                     dt_ab_str = formatar_dt_exibicao(dt_ab, raw_ab)
                     
                     if pd.notna(dt_ab) and dt_ab < DATA_CORTE:
+                        pct_vida = 100.0
                         tempo_dec_str = "✅ Anistia (Legado)"
-                        status_sla = "🟢 Cumprido (Legado)"
+                        status_sla = "🟢 100% (Legado)"
                     elif pd.notna(dt_ab):
                         tempo_decorrido = (agora_loop - dt_ab).total_seconds() / 3600.0
                         tempo_restante = meta - tempo_decorrido
+                        pct_vida = max(0.0, (tempo_restante / meta) * 100.0)
                         
                         if tempo_restante >= 0:
                             tempo_dec_str = f"⏳ {formatar_tempo_legivel(tempo_restante)} restantes"
-                            status_sla = f"🟢 No Prazo ({formatar_tempo_legivel(tempo_restante)} restantes)"
+                            status_sla = f"{pct_vida:.0f}% Prazo Restante"
                         else:
                             atraso = abs(tempo_restante)
+                            pct_vida = 0.0
                             tempo_dec_str = f"🔴 Estourado (+{formatar_tempo_legivel(atraso)})"
-                            status_sla = f"🔴 Estourado (+{formatar_tempo_legivel(atraso)})"
+                            status_sla = f"🔴 0% Estourado (+{formatar_tempo_legivel(atraso)})"
                     else:
+                        pct_vida = 100.0
                         tempo_dec_str = "-"
                         status_sla = "⚪ Sem data de abertura"
 
@@ -592,26 +616,26 @@ with tab_dash:
                         "Impacto": row.get("Impacto_Norm"),
                         "Prioridade": row.get("Prioridade_Clean"),
                         "Status": status_formatado,
-                        "Tempo Decorrido": tempo_dec_str,
-                        "Situação SLA": status_sla,
+                        "Saúde SLA": status_sla,
+                        "Tempo Restante": tempo_dec_str,
+                        "pct_num": pct_vida,
                         "Técnico": row.get("Técnico Responsável") if str(row.get("Técnico Responsável")).strip() != "" else "Não atribuído"
                     })
 
             if lista_ativos:
                 df_ativos = pd.DataFrame(lista_ativos).sort_values("Nº", ascending=False)
-                df_disp_ativos = df_ativos[["Nº", "Solicitante", "Abertura", "Área", "Equipamento", "Descrição do Problema", "Impacto", "Prioridade", "Status", "Tempo Decorrido", "Situação SLA", "Técnico"]]
+                df_disp_ativos = df_ativos[["Nº", "Solicitante", "Abertura", "Área", "Equipamento", "Descrição do Problema", "Impacto", "Prioridade", "Status", "Saúde SLA", "Tempo Restante", "Técnico", "pct_num"]]
                 
-                def colorir_linha_ativos(row):
-                    prio = str(row["Prioridade"]).strip().lower()
-                    sit = str(row["Situação SLA"])
-                    if "Estourado" in sit or "alta" in prio:
-                        return ['background-color: #7F1D1D; color: #FECDD3; font-weight: 700;'] * len(row)
-                    elif "media" in prio:
-                        return ['background-color: #78350F; color: #FDE68A; font-weight: 700;'] * len(row)
+                def colorir_linha_barra_vida(row):
+                    pct = row["pct_num"]
+                    if pct > 50.0:
+                        return ['background-color: #064E3B; color: #A7F3D0; font-weight: 700;'] * (len(row)-1) + ['display: none;']
+                    elif pct > 20.0:
+                        return ['background-color: #78350F; color: #FDE68A; font-weight: 700;'] * (len(row)-1) + ['display: none;']
                     else:
-                        return ['background-color: #1E3A8A; color: #F0F9FF; font-weight: 700;'] * len(row)
+                        return ['background-color: #7F1D1D; color: #FECDD3; font-weight: 700;'] * (len(row)-1) + ['display: none;']
 
-                styled_ativos = df_disp_ativos.style.apply(colorir_linha_ativos, axis=1)
+                styled_ativos = df_disp_ativos.style.apply(colorir_linha_barra_vida, axis=1)
                 st.dataframe(styled_ativos, use_container_width=True, hide_index=True)
             else:
                 st.success("✅ Nenhum chamado ativo pendente no momento.")
