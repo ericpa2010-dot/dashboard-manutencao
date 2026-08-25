@@ -268,7 +268,7 @@ def criar_grafico_pareto_limpo(df_input, coluna, titulo, top_n=10):
 
 SENHA_CORRETA = st.secrets.get("SENHA_GESTAO", "manutencao123")
 
-# PROCESSAMENTO DE DADOS UNIFICADO (FILTRO DE 90 DIAS + ANISTIA LEGADA)
+# PROCESSAMENTO COMPLETO DE DADOS (BASE GERAL PRESERVADA)
 if not df.empty:
     fuso_br = pytz.timezone("America/Sao_Paulo")
     agora_br = datetime.now(fuso_br)
@@ -313,9 +313,6 @@ if not df.empty:
     df_calc["dt_abertura"] = df_calc.apply(extrair_dt_abertura, axis=1)
     df_calc["dt_conclusao"] = df_calc.apply(extrair_dt_conclusao, axis=1)
 
-    # FILTRO DE JANELA DOS ÚLTIMOS 90 DIAS
-    df_calc = df_calc[df_calc["dt_abertura"].isna() | (df_calc["dt_abertura"] >= LIMITE_90_DIAS)].copy()
-
     METAS_SLA = {"alta": 4.0, "media": 8.0, "baixa": 48.0}
 
     def get_sla_target(prioridade):
@@ -326,8 +323,12 @@ if not df.empty:
         return 8.0
 
     df_calc["Meta_SLA_Horas"] = df_calc["Prioridade"].apply(get_sla_target)
+
+    # SUBSET ESPECÍFICO PARA OS INDICADORES DOS ÚLTIMOS 90 DIAS
+    df_90d = df_calc[df_calc["dt_abertura"].isna() | (df_calc["dt_abertura"] >= LIMITE_90_DIAS)].copy()
 else:
     df_calc = pd.DataFrame()
+    df_90d = pd.DataFrame()
 
 tab_abertura, tab_dash, tab_gestao = st.tabs(["📌 Abrir Chamado", "📊 Dashboard & SLA", "⚙️ Gestão Operacional"])
 
@@ -403,7 +404,7 @@ with tab_abertura:
 
 # ABA 2: DASHBOARD
 with tab_dash:
-    st.title("📊 Painel Gerencial & SLA (Janela: Últimos 90 Dias)")
+    st.title("📊 Painel Gerencial & SLA")
 
     if df_calc.empty:
         st.info("Nenhum dado registrado na planilha até o momento.")
@@ -411,7 +412,8 @@ with tab_dash:
         status_abertos = ["Pendente", "Atuando", "Aberto", "Em andamento"]
         mask_abertos = df_calc["Status_Clean"].isin(status_abertos)
         
-        total_chamados = len(df_calc)
+        total_chamados_geral = len(df_calc)
+        total_chamados_90d = len(df_90d)
         em_aberto = len(df_calc[mask_abertos])
 
         df_temp_validos = df_calc.dropna(subset=["dt_abertura"]).copy()
@@ -451,19 +453,19 @@ with tab_dash:
             tmr_geral_num = 0.0
 
         total_concluidos = len(df_concluidos)
-        taxa_conclusao = (total_concluidos / total_chamados * 100) if total_chamados > 0 else 0.0
+        taxa_conclusao = (total_concluidos / total_chamados_geral * 100) if total_chamados_geral > 0 else 0.0
         sla_cumprido_pct = (
             (df_concluidos["SLA_Cumprido"].sum() / total_concluidos * 100) if total_concluidos > 0 else 100.0
         )
 
         c1, c2, c3 = st.columns(3)
-        c1.metric("Total Chamados (90d)", total_chamados)
+        c1.metric("Total Chamados (Histórico)", total_chamados_geral)
         c2.metric("Em Aberto", em_aberto)
         c3.metric("Taxa Resolução", f"{taxa_conclusao:.0f}%")
 
         c4, c5 = st.columns(2)
         c4.metric("Tempo Médio (TMR Mediano)", formatar_tempo_legivel(tmr_geral_num))
-        c5.metric("Conformidade SLA Legado+Atual", f"{sla_cumprido_pct:.0f}%")
+        c5.metric("Conformidade SLA Geral", f"{sla_cumprido_pct:.0f}%")
 
         st.markdown("---")
 
@@ -476,23 +478,28 @@ with tab_dash:
 
         st.markdown("---")
 
-        st.markdown("##### 📊 Proporção por Prioridade (% do Volume Total)")
+        st.markdown("##### 📊 Proporção por Prioridade (% de Volume nos Últimos 90 Dias)")
 
         def cartao_prioridade_porcentagem(col, nome, meta_horas, cor_borda, cor_texto):
-            sub_total_prio = df_calc[
-                df_calc["Prioridade"].astype(str).str.lower().str.replace("é", "e", regex=False).str.contains(nome.lower())
-            ]
+            sub_total_prio = df_90d[
+                df_90d["Prioridade"].astype(str).str.lower().str.replace("é", "e", regex=False).str.contains(nome.lower())
+            ] if not df_90d.empty else pd.DataFrame()
+            
             qtd_prio = len(sub_total_prio)
-            pct_proporcao = (qtd_prio / total_chamados * 100) if total_chamados > 0 else 100.0
+            pct_proporcao = (qtd_prio / total_chamados_90d * 100) if total_chamados_90d > 0 else 100.0
 
-            sub_ativos = sub_total_prio[sub_total_prio["Status_Clean"] != "Concluído"]
-            qtd_atuando = len(sub_ativos[sub_ativos["Status_Clean"] == "Atuando"])
-            qtd_pendente = len(sub_ativos[sub_ativos["Status_Clean"] == "Pendente"])
-            qtd_concluido = qtd_prio - (qtd_atuando + qtd_pendente)
+            if not sub_total_prio.empty:
+                sub_ativos = sub_total_prio[sub_total_prio["Status_Clean"] != "Concluído"]
+                qtd_atuando = len(sub_ativos[sub_ativos["Status_Clean"] == "Atuando"])
+                qtd_pendente = len(sub_ativos[sub_ativos["Status_Clean"] == "Pendente"])
+                qtd_concluido = qtd_prio - (qtd_atuando + qtd_pendente)
+            else:
+                qtd_atuando = qtd_pendente = qtd_concluido = 0
 
             sub_concluidos = df_concluidos[
                 df_concluidos["Prioridade"].astype(str).str.lower().str.replace("é", "e", regex=False).str.contains(nome.lower())
-            ]
+            ] if not df_concluidos.empty else pd.DataFrame()
+            
             tmr_num = sub_concluidos["Tempo_Resolucao_Horas"].median() if not sub_concluidos.empty else 0.0
 
             html_card = textwrap.dedent(f"""
@@ -501,7 +508,7 @@ with tab_dash:
                         <span style="font-weight:800; color:{cor_texto}; font-size:1.1rem;">{nome.upper()}</span>
                         <span style="font-size:0.8rem; color:#94A3B8; font-weight:600;">Meta: {formatar_tempo_legivel(meta_horas)}</span>
                     </div>
-                    <div style="font-size:2rem; font-weight:800; color:{cor_texto}; margin:6px 0 2px 0;">{pct_proporcao:.1f}% <span style="font-size:0.8rem; color:#CBD5E1; font-weight:400;">({qtd_prio} de {total_chamados})</span></div>
+                    <div style="font-size:2rem; font-weight:800; color:{cor_texto}; margin:6px 0 2px 0;">{pct_proporcao:.1f}% <span style="font-size:0.8rem; color:#CBD5E1; font-weight:400;">({qtd_prio} de {total_chamados_90d})</span></div>
                     <div style="margin-top:8px; padding-top:8px; border-top:1px solid #334155; font-size:0.8rem; color:#CBD5E1; display:flex; justify-content:space-between; flex-wrap:wrap; gap:4px;">
                         <span>🟣 Atuando: <b style="color:#C084FC;">{qtd_atuando}</b></span>
                         <span>🟡 Pendente: <b style="color:#FBBF24;">{qtd_pendente}</b></span>
@@ -600,8 +607,8 @@ with tab_dash:
 
         st.markdown("---")
 
-        # TABELA 2: HISTÓRICO GERAL DE CHAMADOS
-        st.markdown(f"##### 📋 Histórico Geral de Chamados & SLA (Total 90d: {total_chamados})")
+        # TABELA 2: HISTÓRICO GERAL COMPLETO (TOTALIDADE DOS CHAMADOS - Ex: 665)
+        st.markdown(f"##### 📋 Histórico Geral de Chamados & SLA (Total: {total_chamados_geral})")
 
         lista_geral = []
         for _, row in df_calc.iterrows():
