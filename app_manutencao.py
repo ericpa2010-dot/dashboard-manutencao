@@ -180,22 +180,38 @@ def parse_data_infalivel(val):
     if val is None or pd.isna(val):
         return pd.NaT
     if isinstance(val, (pd.Timestamp, datetime)):
-        return pd.Timestamp(val)
+        ts = pd.Timestamp(val)
+        if getattr(ts, 'tz', None) is not None:
+            ts = ts.tz_localize(None)
+        return ts
         
-    s = str(val).replace('\xa0', ' ').strip()
-    if s.lower() in ["nan", "none", "", "-", "null"]:
+    s = str(val).strip().lstrip("'").replace('\xa0', ' ')
+    if s.lower() in ["nan", "none", "", "-", "null", "undefined"]:
         return pd.NaT
 
+    s_clean = re.sub(r'\s+', ' ', s)
+
     try:
-        dt = pd.to_datetime(s, dayfirst=True, errors='coerce')
+        val_float = float(s_clean)
+        if 30000 <= val_float <= 70000:
+            return pd.to_datetime(val_float, unit='D', origin='1899-12-30')
+    except:
+        pass
+
+    try:
+        dt = pd.to_datetime(s_clean, dayfirst=True, errors='coerce')
         if pd.notna(dt):
+            if getattr(dt, 'tz', None) is not None:
+                dt = dt.tz_localize(None)
             return dt
     except:
         pass
 
     try:
-        dt = pd.to_datetime(s, dayfirst=False, errors='coerce')
+        dt = pd.to_datetime(s_clean, dayfirst=False, errors='coerce')
         if pd.notna(dt):
+            if getattr(dt, 'tz', None) is not None:
+                dt = dt.tz_localize(None)
             return dt
     except:
         pass
@@ -203,7 +219,12 @@ def parse_data_infalivel(val):
     return pd.NaT
 
 def extrair_dt_abertura(row):
-    val = extrair_campo(row, ["Carimbo de data/hora", "Carimbo de Data/Hora", "Data/Hora", "Data de Abertura", "Data", "Timestamp", "Carimbo de data / hora"], "")
+    candidatos = [
+        "Carimbo de data/hora", "Carimbo de Data/Hora", "Data/Hora", 
+        "Data de Abertura", "Data", "Timestamp", "Carimbo de data / hora",
+        "Data/Hora Abertura", "Data Abertura"
+    ]
+    val = extrair_campo(row, candidatos, "")
     if val != "":
         dt = parse_data_infalivel(val)
         if pd.notna(dt):
@@ -211,7 +232,7 @@ def extrair_dt_abertura(row):
             
     for col in row.index:
         col_lower = str(col).lower()
-        if any(k in col_lower for k in ["carimbo", "data/hora", "abertura", "timestamp"]):
+        if any(k in col_lower for k in ["carimbo", "data", "abertura", "timestamp"]):
             val_raw = str(row[col]).strip()
             dt = parse_data_infalivel(val_raw)
             if pd.notna(dt):
@@ -220,7 +241,8 @@ def extrair_dt_abertura(row):
     return pd.NaT
 
 def extrair_dt_conclusao(row):
-    val = extrair_campo(row, ["Data de conclusão", "Data de Conclusão"], "")
+    candidatos = ["Data de conclusão", "Data de Conclusão", "Data Conclusão", "Data Fechamento"]
+    val = extrair_campo(row, candidatos, "")
     if val != "":
         dt = parse_data_infalivel(val)
         if pd.notna(dt):
@@ -228,7 +250,7 @@ def extrair_dt_conclusao(row):
             
     for col in row.index:
         col_lower = str(col).lower()
-        if "conclu" in col_lower or "encerra" in col_lower:
+        if "conclu" in col_lower or "encerra" in col_lower or "fecha" in col_lower:
             val_raw = str(row[col]).strip()
             dt = parse_data_infalivel(val_raw)
             if pd.notna(dt):
@@ -344,9 +366,9 @@ def load_and_process_data():
     df_calc["Prioridade_Clean"] = df_calc.apply(sanitizar_prioridade_universal, axis=1)
     df_calc["Status_Clean"] = df_calc.apply(obter_status_sanitizado, axis=1)
     
-    # Conversão estrita e forçada para datetime64[ns]
-    df_calc["dt_abertura"] = pd.to_datetime(df_calc.apply(extrair_dt_abertura, axis=1), errors="coerce")
-    df_calc["dt_conclusao"] = pd.to_datetime(df_calc.apply(extrair_dt_conclusao, axis=1), errors="coerce")
+    # Extração de datas direta e segura
+    df_calc["dt_abertura"] = df_calc.apply(extrair_dt_abertura, axis=1)
+    df_calc["dt_conclusao"] = df_calc.apply(extrair_dt_conclusao, axis=1)
 
     METAS_SLA = {"Alta": 4.0, "Média": 8.0, "Baixa": 48.0}
     df_calc["Meta_SLA_Horas"] = df_calc["Prioridade_Clean"].map(METAS_SLA).fillna(8.0)
@@ -473,18 +495,19 @@ with tab_dash:
     else:
         em_expediente = esta_no_expediente(agora_naive_geral)
 
+        # Filtro de período tolerante a datas válidas ou pendentes
         if opcao_periodo == "Últimos 30 dias":
             limite_dt = agora_naive_geral - pd.Timedelta(days=30)
-            df_indicadores = df_calc[df_calc["dt_abertura"].notna() & (df_calc["dt_abertura"] >= limite_dt)].copy()
+            df_indicadores = df_calc[df_calc["dt_abertura"].isna() | (df_calc["dt_abertura"] >= limite_dt)].copy()
         elif opcao_periodo == "Últimos 90 dias":
             limite_dt = agora_naive_geral - pd.Timedelta(days=90)
-            df_indicadores = df_calc[df_calc["dt_abertura"].notna() & (df_calc["dt_abertura"] >= limite_dt)].copy()
+            df_indicadores = df_calc[df_calc["dt_abertura"].isna() | (df_calc["dt_abertura"] >= limite_dt)].copy()
         elif opcao_periodo == "Este Mês":
             limite_dt = agora_naive_geral.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-            df_indicadores = df_calc[df_calc["dt_abertura"].notna() & (df_calc["dt_abertura"] >= limite_dt)].copy()
+            df_indicadores = df_calc[df_calc["dt_abertura"].isna() | (df_calc["dt_abertura"] >= limite_dt)].copy()
         elif opcao_periodo == "Este Ano":
             limite_dt = agora_naive_geral.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
-            df_indicadores = df_calc[df_calc["dt_abertura"].notna() & (df_calc["dt_abertura"] >= limite_dt)].copy()
+            df_indicadores = df_calc[df_calc["dt_abertura"].isna() | (df_calc["dt_abertura"] >= limite_dt)].copy()
         else:
             df_indicadores = df_calc.copy()
 
