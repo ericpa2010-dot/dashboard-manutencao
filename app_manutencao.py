@@ -344,8 +344,9 @@ def load_and_process_data():
     df_calc["Prioridade_Clean"] = df_calc.apply(sanitizar_prioridade_universal, axis=1)
     df_calc["Status_Clean"] = df_calc.apply(obter_status_sanitizado, axis=1)
     
-    df_calc["dt_abertura"] = df_calc.apply(extrair_dt_abertura, axis=1)
-    df_calc["dt_conclusao"] = df_calc.apply(extrair_dt_conclusao, axis=1)
+    # Conversão estrita e forçada para datetime64[ns]
+    df_calc["dt_abertura"] = pd.to_datetime(df_calc.apply(extrair_dt_abertura, axis=1), errors="coerce")
+    df_calc["dt_conclusao"] = pd.to_datetime(df_calc.apply(extrair_dt_conclusao, axis=1), errors="coerce")
 
     METAS_SLA = {"Alta": 4.0, "Média": 8.0, "Baixa": 48.0}
     df_calc["Meta_SLA_Horas"] = df_calc["Prioridade_Clean"].map(METAS_SLA).fillna(8.0)
