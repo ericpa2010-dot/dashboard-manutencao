@@ -222,16 +222,22 @@ def load_and_process_data():
     df_calc["Impacto_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["Qual é o impacto na operação?", "Impacto na operação", "Impacto"], "Não informado"), axis=1)
     df_calc["Area_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["Área do chamado", "Nome e Setor"], "Geral"), axis=1)
     
-    DATA_CORTE_TECNICO = pd.Timestamp(2026, 8, 23, 0, 0, 0)
     def sanitizar_tecnico(r):
-        tec_raw = str(r.get("Técnico Responsável", "")).strip()
-        dt_ab = extrair_dt_abertura(r)
+        tec_raw = extrair_campo(r, ["Técnico Responsável", "Técnico", "Tecnico", "Responsável", "Responsavel"], "").strip()
         if tec_raw == "" or tec_raw.lower() in ["nan", "none", "não atribuído", "-"]:
-            if pd.notna(dt_ab) and dt_ab < DATA_CORTE_TECNICO: return "Eric (Histórico Geral)"
             return "Não atribuído"
         return tec_raw
 
+    def extrair_hh(r):
+        val = extrair_campo(r, ["Horas-Homem", "Horas Homem", "HH", "Horas Tecnico", "Horas Técnico"], "0")
+        val_clean = str(val).replace(",", ".").replace("h", "").strip()
+        try:
+            return float(val_clean)
+        except Exception:
+            return 0.0
+
     df_calc["Tecnico_Clean"] = df_calc.apply(sanitizar_tecnico, axis=1)
+    df_calc["Horas_Homem"] = df_calc.apply(extrair_hh, axis=1)
     df_calc["Prioridade_Clean"] = df_calc.apply(sanitizar_prioridade_universal, axis=1)
     df_calc["Status_Clean"] = df_calc.apply(obter_status_sanitizado, axis=1)
     
@@ -344,7 +350,7 @@ with tab_abertura:
                 preencher("Prioridade", prioridade)
                 preencher("Informação adicional", info_adicional)
                 preencher("Status", "Pendente")
-                preencher("Técnico Responsável", "Eric")
+                preencher("Técnico Responsável", "Não atribuído")
 
                 sheet.append_row(nova_linha)
                 st.success(f"Chamado Nº {proximo_num} registrado com sucesso!")
@@ -426,12 +432,12 @@ with tab_dash:
 
         st.markdown("---")
 
-        # Barra de Vida & Saúde do SLA
+        # Barra de Vida & Saúde do SLA DENTRO DO CARD HTML
         st.markdown(f"##### ⏳ Barra de Vida & Saúde do SLA por Fila (Regime: `{st.session_state['sla_regime']}`)")
         if not em_expediente:
             st.info("⏸️ **Expediente Suspenso:** Fora do horário de trabalho configurado. O contador do SLA está congelado.")
 
-        def cartao_barra_vida(col, nome_prio, meta_horas):
+        def cartao_barra_vida_interna(col, nome_prio, meta_horas):
             sub_prio = df_calc[(df_calc["Prioridade_Clean"] == nome_prio) & (df_calc["Status_Clean"] != "Concluído")]
             qtd_a = len(sub_prio)
             qtd_atuando = len(sub_prio[sub_prio["Status_Clean"] == "Atuando"])
@@ -462,6 +468,7 @@ with tab_dash:
                     cor_status = "#22C55E" if pct_saude > 50.0 else ("#F59E0B" if pct_saude > 20.0 else "#EF4444")
                     texto_status = f"{pct_saude:.1f}% ({qtd_a} ativos)"
 
+            pct_bar = max(0.0, min(100.0, pct_saude))
             html_card = textwrap.dedent(f"""
                 <div style="background-color:#1E293B; border:2px solid {cor_status}; padding:15px; border-radius:12px; margin-bottom:10px;">
                     <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -469,6 +476,9 @@ with tab_dash:
                         <span style="font-size:0.8rem; color:#94A3B8; font-weight:600;">Meta: {formatar_tempo_legivel(meta_horas)}</span>
                     </div>
                     <div style="font-size:1.8rem; font-weight:800; color:{cor_status}; margin:6px 0 2px 0;">{texto_status}</div>
+                    <div style="background-color: #334155; border-radius: 6px; height: 10px; width: 100%; margin: 8px 0; overflow: hidden;">
+                        <div style="background-color: {cor_status}; height: 100%; width: {pct_bar:.1f}%;"></div>
+                    </div>
                     <div style="margin-top:8px; padding-top:8px; border-top:1px solid #334155; font-size:0.8rem; color:#CBD5E1; display:flex; justify-content:space-between;">
                         <span>🟣 Atuando: <b style="color:#C084FC;">{qtd_atuando}</b></span>
                         <span>🟡 Pendente: <b style="color:#FBBF24;">{qtd_pendente}</b></span>
@@ -478,16 +488,15 @@ with tab_dash:
 
             with col:
                 st.markdown(html_card, unsafe_allow_html=True)
-                st.progress(max(0.0, min(1.0, pct_saude / 100.0)))
 
         ca, cm, cb = st.columns(3)
-        cartao_barra_vida(ca, "Alta", 4.0)
-        cartao_barra_vida(cm, "Média", 8.0)
-        cartao_barra_vida(cb, "Baixa", 48.0)
+        cartao_barra_vida_interna(ca, "Alta", 4.0)
+        cartao_barra_vida_interna(cm, "Média", 8.0)
+        cartao_barra_vida_interna(cb, "Baixa", 48.0)
 
         st.markdown("---")
 
-        # Monitoramento Operacional de Chamados Ativos em Aberto
+        # Monitoramento Operacional de Chamados Ativos em Aberto COM CORES DINÂMICAS POR TEMPO
         st.markdown(f"##### 🚨 Monitoramento Operacional (Chamados Ativos em Aberto: {em_aberto})")
         df_abertos = df_calc[df_calc["Status_Clean"].isin(["Pendente", "Atuando"])].copy()
         if not df_abertos.empty:
@@ -531,11 +540,27 @@ with tab_dash:
                     "Status": "🟣 Atuando" if row.get("Status_Clean") == "Atuando" else "🟡 Pendente",
                     "Saúde SLA": situacao,
                     "Tempo Restante": tempo_dec_str,
-                    "Técnico": row.get("Tecnico_Clean", "Eric")
+                    "Técnico": row.get("Tecnico_Clean", "Não atribuído")
                 })
 
             df_disp_ativos = pd.DataFrame(lista_ativos).sort_values("Nº", ascending=False)
-            st.dataframe(df_disp_ativos, use_container_width=True, hide_index=True)
+
+            def colorir_linha_monitoramento(row):
+                salud = str(row.get("Saúde SLA", ""))
+                tempo = str(row.get("Tempo Restante", ""))
+                prio = str(row.get("Prioridade", "")).lower()
+                
+                if "Estourado" in salud or "Estourado" in tempo or "🔴" in salud:
+                    return ['background-color: #7F1D1D; color: #FECDD3; font-weight: 700;'] * len(row)
+                elif "Pausado" in salud or "Legado" in salud:
+                    return ['background-color: #1E293B; color: #CBD5E1; font-weight: 600;'] * len(row)
+                elif "alta" in prio or "20%" in salud or "10%" in salud or "5%" in salud:
+                    return ['background-color: #78350F; color: #FDE68A; font-weight: 700;'] * len(row)
+                else:
+                    return ['background-color: #064E3B; color: #A7F3D0; font-weight: 700;'] * len(row)
+
+            styled_ativos = df_disp_ativos.style.apply(colorir_linha_monitoramento, axis=1)
+            st.dataframe(styled_ativos, use_container_width=True, hide_index=True)
         else:
             st.success("✅ Nenhum chamado ativo pendente no momento.")
 
@@ -602,7 +627,7 @@ with tab_dash:
                 "Status": status_disp,
                 "Tempo / TMR": tmr_str,
                 "Situação SLA": sit_str,
-                "Técnico": row.get("Tecnico_Clean", "Eric")
+                "Técnico": row.get("Tecnico_Clean", "Não atribuído")
             })
 
         if lista_geral:
@@ -628,23 +653,46 @@ with tab_dash:
 
         st.markdown("---")
 
-        # Desempenho por Técnico
-        st.markdown(f"##### 👷 Desempenho por Técnico ({opcao_periodo})")
-        if not df_concluidos.empty:
-            df_concluidos["Tecnico_Agrupado"] = df_concluidos["Tecnico_Clean"].apply(lambda x: "Eric" if x in ["Não atribuído", "Eric (Histórico Geral)"] else x)
-            df_concluidos["SLA_Cumprido"] = df_concluidos.apply(
-                lambda r: True if (pd.notna(r["dt_abertura"]) and r["dt_abertura"] < DATA_CORTE) else (r["Tempo_Resolucao_Horas"] <= r["Meta_SLA_Horas"]),
-                axis=1
-            )
-            tec_stats = df_concluidos.groupby("Tecnico_Agrupado").agg(
-                Atendidos=("Num_Chamado_Num", "count"),
-                TMR_Medio=("Tempo_Resolucao_Horas", "median"),
-                SLA_OK=("SLA_Cumprido", "sum")
-            ).reset_index()
-            tec_stats["SLA (%)"] = (tec_stats["SLA_OK"] / tec_stats["Atendidos"] * 100).round(1)
-            tec_stats["TMR Médio"] = tec_stats["TMR_Medio"].apply(formatar_tempo_legivel)
-            tec_exibicao = tec_stats[["Tecnico_Agrupado", "Atendidos", "TMR Médio", "SLA (%)"]].rename(columns={"Tecnico_Agrupado": "Técnico Responsável"}).sort_values("Atendidos", ascending=False)
-            st.dataframe(tec_exibicao, use_container_width=True, hide_index=True)
+        # Desempenho por Técnico - RESTAURADO COM INTEGRALIDADE PARA FELIPE, ERIC E DEMAIS
+        st.markdown(f"##### 👷 Desempenho por Técnico & Horas Aplicadas ({opcao_periodo})")
+        if not df_calc.empty:
+            df_tec_analise = df_calc[df_calc["Tecnico_Clean"] != "Não atribuído"].copy()
+            if not df_tec_analise.empty:
+                df_tec_analise["SLA_Cumprido"] = df_tec_analise.apply(
+                    lambda r: True if (pd.notna(r["dt_abertura"]) and r["dt_abertura"] < DATA_CORTE) else (
+                        (r["Status_Clean"] == "Concluído") and pd.notna(r["dt_conclusao"]) and pd.notna(r["dt_abertura"]) and 
+                        ((r["dt_conclusao"] - r["dt_abertura"]).total_seconds() / 3600.0 <= r["Meta_SLA_Horas"])
+                    ),
+                    axis=1
+                )
+                
+                df_tec_analise["Tempo_Resolucao_Horas"] = df_tec_analise.apply(
+                    lambda r: (r["dt_conclusao"] - r["dt_abertura"]).total_seconds() / 3600.0 if (pd.notna(r["dt_conclusao"]) and pd.notna(r["dt_abertura"])) else None,
+                    axis=1
+                )
+
+                tec_stats = df_tec_analise.groupby("Tecnico_Clean").agg(
+                    Total_Atendidos=("Num_Chamado_Num", "count"),
+                    Concluidos=("Status_Clean", lambda s: (s == "Concluído").sum()),
+                    Total_Horas_Homem=("Horas_Homem", "sum"),
+                    TMR_Medio=("Tempo_Resolucao_Horas", "median"),
+                    SLA_OK=("SLA_Cumprido", "sum")
+                ).reset_index()
+
+                tec_stats["SLA (%)"] = (tec_stats["SLA_OK"] / tec_stats["Total_Atendidos"] * 100).round(1)
+                tec_stats["TMR Médio"] = tec_stats["TMR_Medio"].apply(formatar_tempo_legivel)
+                tec_stats["Horas-Homem"] = tec_stats["Total_Horas_Homem"].apply(lambda h: f"{h:.1f}h")
+
+                tec_exibicao = tec_stats[["Tecnico_Clean", "Total_Atendidos", "Concluidos", "Horas-Homem", "TMR Médio", "SLA (%)"]].rename(
+                    columns={
+                        "Tecnico_Clean": "Técnico Responsável",
+                        "Total_Atendidos": "Total Chamados",
+                        "Concluidos": "Concluídos"
+                    }
+                ).sort_values("Total Chamados", ascending=False)
+                st.dataframe(tec_exibicao, use_container_width=True, hide_index=True)
+            else:
+                st.info("Nenhum técnico atribuído nos chamados registrados até o momento.")
 
         st.markdown("---")
 
@@ -690,7 +738,7 @@ with tab_gestao:
                     st.rerun()
 
         st.markdown("---")
-        st.subheader("Atualizar Status de Chamado")
+        st.subheader("Atualizar Status de Chamado & Apontamento Técnico")
 
         num_chamado = st.number_input("Informe o Nº do Chamado para atualizar", min_value=1, step=1)
         mask_num = df_calc["Num_Chamado_Num"] == num_chamado
@@ -708,6 +756,7 @@ with tab_gestao:
                 with col_a:
                     novo_status = st.selectbox("Status", ["Pendente", "Atuando", "Concluído"])
                     tecnico = st.selectbox("Técnico Responsável", ["Eric", "Felipe", "Outro"])
+                    hh_in = st.text_input("Horas-Homem Aplicadas (ex: 1.5)", value=str(linha_atual.get("Horas-Homem", "1.0")))
                 with col_b:
                     obs_interna = st.text_area("Diagnóstico / Ação Executada", value=str(linha_atual.get("Observação Interna", "")))
 
@@ -717,6 +766,7 @@ with tab_gestao:
 
                     if "Status" in headers: updates_lote.append({'range': rowcol_to_a1(linha_excel, headers.index("Status") + 1), 'values': [[novo_status]]})
                     if "Técnico Responsável" in headers: updates_lote.append({'range': rowcol_to_a1(linha_excel, headers.index("Técnico Responsável") + 1), 'values': [[tecnico]]})
+                    if "Horas-Homem" in headers: updates_lote.append({'range': rowcol_to_a1(linha_excel, headers.index("Horas-Homem") + 1), 'values': [[hh_in]]})
                     if "Observação Interna" in headers: updates_lote.append({'range': rowcol_to_a1(linha_excel, headers.index("Observação Interna") + 1), 'values': [[obs_interna]]})
 
                     if novo_status == "Concluído" and "Data de conclusão" in headers:
