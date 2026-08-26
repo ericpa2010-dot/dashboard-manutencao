@@ -23,7 +23,7 @@ if "hora_inicio_turno" not in st.session_state:
 if "hora_fim_turno" not in st.session_state:
     st.session_state["hora_fim_turno"] = time(19, 0)
 
-# CSS Design System Futurista Escuro
+# CSS Design System
 st.markdown("""
    <style>
    #MainMenu {visibility: hidden;}
@@ -234,8 +234,9 @@ def load_and_process_data():
     df_calc["Tecnico_Clean"] = df_calc.apply(sanitizar_tecnico, axis=1)
     df_calc["Prioridade_Clean"] = df_calc.apply(sanitizar_prioridade_universal, axis=1)
     df_calc["Status_Clean"] = df_calc.apply(obter_status_sanitizado, axis=1)
-    df_calc["dt_abertura"] = df_calc.apply(extrair_dt_abertura, axis=1)
-    df_calc["dt_conclusao"] = df_calc.apply(extrair_dt_conclusao, axis=1)
+    
+    df_calc["dt_abertura"] = pd.to_datetime(df_calc.apply(extrair_dt_abertura, axis=1), errors="coerce")
+    df_calc["dt_conclusao"] = pd.to_datetime(df_calc.apply(extrair_dt_conclusao, axis=1), errors="coerce")
 
     METAS_SLA = {"Alta": 4.0, "Média": 8.0, "Baixa": 48.0}
     df_calc["Meta_SLA_Horas"] = df_calc["Prioridade_Clean"].map(METAS_SLA).fillna(8.0)
@@ -385,7 +386,9 @@ with tab_dash:
 
         df_concluidos = df_calc.dropna(subset=["dt_conclusao", "dt_abertura"]).copy()
         if not df_concluidos.empty:
-            df_concluidos["Tempo_Resolucao_Horas"] = (df_concluidos["dt_conclusao"] - df_concluidos["dt_abertura"]).dt.total_seconds() / 3600.0
+            s_conc = pd.to_datetime(df_concluidos["dt_conclusao"], errors="coerce")
+            s_ab = pd.to_datetime(df_concluidos["dt_abertura"], errors="coerce")
+            df_concluidos["Tempo_Resolucao_Horas"] = (s_conc - s_ab).dt.total_seconds() / 3600.0
             df_concluidos = df_concluidos[df_concluidos["Tempo_Resolucao_Horas"] >= 0]
             df_tmr_operacional = df_concluidos[(df_concluidos["Tempo_Resolucao_Horas"] > 0) & (df_concluidos["Tempo_Resolucao_Horas"] <= 720)]
             tmr_geral_num = df_tmr_operacional["Tempo_Resolucao_Horas"].median() if not df_tmr_operacional.empty else 0.0
