@@ -123,6 +123,27 @@ def extrair_campo(row, candidatos, padrao=""):
             return str(row[c]).strip()
     return padrao
 
+def extrair_equipamento_infalivel(row):
+    candidatos = [
+        "Equipamento / Sistema / Local", "Equipamento/Sistema/Local", 
+        "Máquina ou Equipamento", "Equipamento", "Máquina", "Maquina", 
+        "Equipamento / Sistema", "Equipamento/Sistema", "Sistema / Equipamento", 
+        "Qual o equipamento?", "Qual é o equipamento?", "Local / Equipamento",
+        "Equipamento / Local", "Máquina / Equipamento", "Equipamento / Máquina"
+    ]
+    for c in candidatos:
+        if c in row.index and pd.notna(row[c]) and str(row[c]).strip() != "":
+            return str(row[c]).strip()
+            
+    for col in row.index:
+        col_str = str(col).lower()
+        if ("equip" in col_str or "maquin" in col_str or "máquin" in col_str) and pd.notna(row[col]):
+            val = str(row[col]).strip()
+            if val != "" and val.lower() not in ["nan", "none", "null"]:
+                return val
+                
+    return "Não informado"
+
 def parse_data_infalivel(val):
     if not val or pd.isna(val):
         return pd.NaT
@@ -217,7 +238,7 @@ def load_and_process_data():
     df_calc["Num_Chamado_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["N*Chamado", "Nº Chamado", "N° Chamado"], "0"), axis=1)
     df_calc["Num_Chamado_Num"] = pd.to_numeric(df_calc["Num_Chamado_Norm"], errors="coerce").fillna(0).astype(int)
     df_calc["Solicitante_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["Nome e Setor", "Nome e Setor Solicitante", "Solicitante", "Nome"], "Não informado"), axis=1)
-    df_calc["Equipamento_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["Equipamento / Sistema / Local", "Equipamento/Sistema/Local", "Máquina ou Equipamento"], "Não informado"), axis=1)
+    df_calc["Equipamento_Norm"] = df_calc.apply(extrair_equipamento_infalivel, axis=1)
     df_calc["Problema_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["Qual é o problema?", "Descrição do chamado", "Tipo de problema"], "Sem descrição"), axis=1)
     df_calc["Impacto_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["Qual é o impacto na operação?", "Impacto na operação", "Impacto"], "Não informado"), axis=1)
     df_calc["Area_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["Área do chamado", "Nome e Setor"], "Geral"), axis=1)
@@ -229,12 +250,17 @@ def load_and_process_data():
         return tec_raw
 
     def extrair_hh(r):
-        val = extrair_campo(r, ["Horas-Homem", "Horas Homem", "HH", "Horas Tecnico", "Horas Técnico"], "0")
-        val_clean = str(val).replace(",", ".").replace("h", "").strip()
-        try:
-            return float(val_clean)
-        except Exception:
-            return 0.0
+        for col in r.index:
+            col_str = str(col).lower()
+            if any(k in col_str for k in ["horas", "hora", "hh", "tempo"]):
+                val_raw = str(r[col]).replace(",", ".").replace("h", "").replace("H", "").strip()
+                try:
+                    v = float(val_raw)
+                    if v >= 0:
+                        return v
+                except:
+                    pass
+        return 0.0
 
     df_calc["Tecnico_Clean"] = df_calc.apply(sanitizar_tecnico, axis=1)
     df_calc["Horas_Homem"] = df_calc.apply(extrair_hh, axis=1)
@@ -371,26 +397,26 @@ with tab_dash:
 
         if opcao_periodo == "Últimos 30 dias":
             limite_dt = agora_naive_geral - pd.Timedelta(days=30)
-            df_indicadores = df_calc[df_calc["dt_abertura"].isna() | (df_calc["dt_abertura"] >= limite_dt)].copy()
+            df_indicadores = df_calc[df_calc["dt_abertura"].notna() & (df_calc["dt_abertura"] >= limite_dt)].copy()
         elif opcao_periodo == "Últimos 90 dias":
             limite_dt = agora_naive_geral - pd.Timedelta(days=90)
-            df_indicadores = df_calc[df_calc["dt_abertura"].isna() | (df_calc["dt_abertura"] >= limite_dt)].copy()
+            df_indicadores = df_calc[df_calc["dt_abertura"].notna() & (df_calc["dt_abertura"] >= limite_dt)].copy()
         elif opcao_periodo == "Este Mês":
             limite_dt = agora_naive_geral.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-            df_indicadores = df_calc[df_calc["dt_abertura"].isna() | (df_calc["dt_abertura"] >= limite_dt)].copy()
+            df_indicadores = df_calc[df_calc["dt_abertura"].notna() & (df_calc["dt_abertura"] >= limite_dt)].copy()
         elif opcao_periodo == "Este Ano":
             limite_dt = agora_naive_geral.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
-            df_indicadores = df_calc[df_calc["dt_abertura"].isna() | (df_calc["dt_abertura"] >= limite_dt)].copy()
+            df_indicadores = df_calc[df_calc["dt_abertura"].notna() & (df_calc["dt_abertura"] >= limite_dt)].copy()
         else:
             df_indicadores = df_calc.copy()
 
         status_abertos = ["Pendente", "Atuando", "Aberto", "Em andamento"]
         em_aberto = len(df_calc[df_calc["Status_Clean"].isin(status_abertos)])
-        total_chamados_geral = len(df_calc)
-        total_concluidos_geral = len(df_calc[df_calc["Status_Clean"] == "Concluído"])
+        total_chamados_geral = len(df_indicadores)
+        total_concluidos_geral = len(df_indicadores[df_indicadores["Status_Clean"] == "Concluído"])
         taxa_conclusao_geral = (total_concluidos_geral / total_chamados_geral * 100) if total_chamados_geral > 0 else 100.0
 
-        df_concluidos = df_calc.dropna(subset=["dt_conclusao", "dt_abertura"]).copy()
+        df_concluidos = df_indicadores.dropna(subset=["dt_conclusao", "dt_abertura"]).copy()
         if not df_concluidos.empty:
             s_conc = pd.to_datetime(df_concluidos["dt_conclusao"], errors="coerce")
             s_ab = pd.to_datetime(df_concluidos["dt_abertura"], errors="coerce")
@@ -448,24 +474,22 @@ with tab_dash:
                 cor_status = "#22C55E"
                 texto_status = "100% (Fila em Dia)"
             else:
+                somas_saude = []
+                agora_loop = pd.Timestamp(datetime.now(pytz.timezone("America/Sao_Paulo")).replace(tzinfo=None))
+                for _, r in sub_prio.iterrows():
+                    dt_ab = r.get("dt_abertura")
+                    if pd.notna(dt_ab):
+                        decorrido = (agora_loop - dt_ab).total_seconds() / 3600.0
+                        restante = meta_horas - decorrido
+                        pct_individual = max(0.0, (restante / meta_horas) * 100.0)
+                        somas_saude.append(pct_individual)
+                    else:
+                        somas_saude.append(100.0)
+                pct_saude = sum(somas_saude) / len(somas_saude) if somas_saude else 100.0
+                cor_status = "#22C55E" if pct_saude > 50.0 else ("#F59E0B" if pct_saude > 20.0 else "#EF4444")
                 if not em_expediente:
-                    pct_saude = 100.0
-                    cor_status = "#38BDF8"
-                    texto_status = f"⏸️ Congelado ({qtd_a} ativos)"
+                    texto_status = f"{pct_saude:.1f}% ⏸️ Congelado"
                 else:
-                    somas_saude = []
-                    agora_loop = pd.Timestamp(datetime.now(pytz.timezone("America/Sao_Paulo")).replace(tzinfo=None))
-                    for _, r in sub_prio.iterrows():
-                        dt_ab = r.get("dt_abertura")
-                        if pd.notna(dt_ab):
-                            decorrido = (agora_loop - dt_ab).total_seconds() / 3600.0
-                            restante = meta_horas - decorrido
-                            pct_individual = max(0.0, (restante / meta_horas) * 100.0)
-                            somas_saude.append(pct_individual)
-                        else:
-                            somas_saude.append(100.0)
-                    pct_saude = sum(somas_saude) / len(somas_saude) if somas_saude else 100.0
-                    cor_status = "#22C55E" if pct_saude > 50.0 else ("#F59E0B" if pct_saude > 20.0 else "#EF4444")
                     texto_status = f"{pct_saude:.1f}% ({qtd_a} ativos)"
 
             pct_bar = max(0.0, min(100.0, pct_saude))
@@ -496,7 +520,7 @@ with tab_dash:
 
         st.markdown("---")
 
-        # Monitoramento Operacional de Chamados Ativos em Aberto COM CORES DINÂMICAS POR TEMPO
+        # Monitoramento Operacional de Chamados Ativos em Aberto COM CORES DINÂMICAS DE SLA (VERDE -> AMARELO -> VERMELHO)
         st.markdown(f"##### 🚨 Monitoramento Operacional (Chamados Ativos em Aberto: {em_aberto})")
         df_abertos = df_calc[df_calc["Status_Clean"].isin(["Pendente", "Atuando"])].copy()
         if not df_abertos.empty:
@@ -508,24 +532,23 @@ with tab_dash:
                 raw_ab = extrair_campo(row, ["Carimbo de data/hora", "Carimbo de Data/Hora", "Data/Hora", "Data de Abertura"], "")
                 dt_ab_str = formatar_dt_exibicao(dt_ab, raw_ab)
 
-                if not em_expediente:
-                    situacao = "⏸️ Pausado (Fora de Turno)"
-                    tempo_dec_str = "⏸️ Pausado"
-                elif pd.notna(dt_ab) and dt_ab < DATA_CORTE:
-                    situacao = "🟢 100% (Legado)"
+                if pd.notna(dt_ab) and dt_ab < DATA_CORTE:
+                    situacao = "100% (Legado)"
                     tempo_dec_str = "✅ Anistia (Legado)"
                 elif pd.notna(dt_ab):
                     tempo_decorrido = (agora_loop - dt_ab).total_seconds() / 3600.0
                     tempo_restante = meta - tempo_decorrido
                     pct_v = max(0.0, (tempo_restante / meta) * 100.0)
+                    
                     if tempo_restante >= 0:
-                        situacao = f"{pct_v:.0f}% Prazo Restante"
-                        tempo_dec_str = f"⏳ {formatar_tempo_legivel(tempo_restante)} restantes"
+                        sufixo_exp = " (Pausado)" if not em_expediente else ""
+                        situacao = f"{pct_v:.0f}% Prazo Restante{sufixo_exp}"
+                        tempo_dec_str = f"⏳ {formatar_tempo_legivel(tempo_restante)} restantes{sufixo_exp}"
                     else:
                         situacao = f"🔴 0% Estourado"
                         tempo_dec_str = f"🔴 Estourado (+{formatar_tempo_legivel(abs(tempo_restante))})"
                 else:
-                    situacao = "-"
+                    situacao = "100% (Sem data)"
                     tempo_dec_str = "-"
 
                 lista_ativos.append({
@@ -550,11 +573,22 @@ with tab_dash:
                 tempo = str(row.get("Tempo Restante", ""))
                 prio = str(row.get("Prioridade", "")).lower()
                 
-                if "Estourado" in salud or "Estourado" in tempo or "🔴" in salud:
+                if "estourado" in salud.lower() or "estourado" in tempo.lower() or "🔴" in salud:
                     return ['background-color: #7F1D1D; color: #FECDD3; font-weight: 700;'] * len(row)
-                elif "Pausado" in salud or "Legado" in salud:
-                    return ['background-color: #1E293B; color: #CBD5E1; font-weight: 600;'] * len(row)
-                elif "alta" in prio or "20%" in salud or "10%" in salud or "5%" in salud:
+                
+                m_pct = re.search(r'(\d+)%', salud)
+                if m_pct:
+                    pct_val = int(m_pct.group(1))
+                    if pct_val > 50:
+                        return ['background-color: #064E3B; color: #A7F3D0; font-weight: 700;'] * len(row)
+                    elif pct_val > 20:
+                        return ['background-color: #78350F; color: #FDE68A; font-weight: 700;'] * len(row)
+                    else:
+                        return ['background-color: #7F1D1D; color: #FECDD3; font-weight: 700;'] * len(row)
+
+                if "alt" in prio:
+                    return ['background-color: #7F1D1D; color: #FECDD3; font-weight: 700;'] * len(row)
+                elif "med" in prio or "méd" in prio:
                     return ['background-color: #78350F; color: #FDE68A; font-weight: 700;'] * len(row)
                 else:
                     return ['background-color: #064E3B; color: #A7F3D0; font-weight: 700;'] * len(row)
@@ -569,12 +603,12 @@ with tab_dash:
         # Histórico Geral de Chamados
         col_hist_tit, col_hist_lim = st.columns([3, 1])
         with col_hist_tit:
-            st.markdown(f"##### 📋 Histórico Geral de Chamados & SLA (Total: {total_chamados_geral})")
+            st.markdown(f"##### 📋 Histórico Geral de Chamados & SLA (Exibindo: {len(df_indicadores)} de {total_chamados_geral})")
         with col_hist_lim:
             limite_exibicao = st.selectbox("Exibir no histórico:", [50, 100, 200, "Todos"], index=0)
 
         lista_geral = []
-        for _, row in df_calc.iterrows():
+        for _, row in df_indicadores.iterrows():
             st_str = str(row.get("Status_Clean", "Pendente"))
             dt_ab = row.get("dt_abertura")
             dt_conc = row.get("dt_conclusao")
@@ -653,34 +687,53 @@ with tab_dash:
 
         st.markdown("---")
 
-        # Desempenho por Técnico - RESTAURADO COM INTEGRALIDADE PARA FELIPE, ERIC E DEMAIS
+        # Desempenho por Técnico - CORRIGIDO PARA RESPEITAR O PERÍODO FILTRADO E AMNISTIA LEGADO
         st.markdown(f"##### 👷 Desempenho por Técnico & Horas Aplicadas ({opcao_periodo})")
-        if not df_calc.empty:
-            df_tec_analise = df_calc[df_calc["Tecnico_Clean"] != "Não atribuído"].copy()
+        if not df_indicadores.empty:
+            df_tec_analise = df_indicadores[df_indicadores["Tecnico_Clean"] != "Não atribuído"].copy()
             if not df_tec_analise.empty:
-                df_tec_analise["SLA_Cumprido"] = df_tec_analise.apply(
-                    lambda r: True if (pd.notna(r["dt_abertura"]) and r["dt_abertura"] < DATA_CORTE) else (
-                        (r["Status_Clean"] == "Concluído") and pd.notna(r["dt_conclusao"]) and pd.notna(r["dt_abertura"]) and 
-                        ((r["dt_conclusao"] - r["dt_abertura"]).total_seconds() / 3600.0 <= r["Meta_SLA_Horas"])
-                    ),
-                    axis=1
-                )
-                
-                df_tec_analise["Tempo_Resolucao_Horas"] = df_tec_analise.apply(
-                    lambda r: (r["dt_conclusao"] - r["dt_abertura"]).total_seconds() / 3600.0 if (pd.notna(r["dt_conclusao"]) and pd.notna(r["dt_abertura"])) else None,
-                    axis=1
-                )
+                def calc_sla_ok(r):
+                    st = r.get("Status_Clean", "")
+                    dt_ab = r.get("dt_abertura")
+                    dt_conc = r.get("dt_conclusao")
+                    meta = r.get("Meta_SLA_Horas", 8.0)
+                    
+                    if pd.isna(dt_ab) or dt_ab < DATA_CORTE:
+                        return True
+                        
+                    if st == "Concluído":
+                        if pd.notna(dt_conc):
+                            t_h = (dt_conc - dt_ab).total_seconds() / 3600.0
+                            return t_h <= meta
+                        return True
+                    else:
+                        agora = pd.Timestamp(datetime.now(pytz.timezone("America/Sao_Paulo")).replace(tzinfo=None))
+                        t_h = (agora - dt_ab).total_seconds() / 3600.0
+                        return t_h <= meta
+
+                def calc_tmr_h(r):
+                    st = r.get("Status_Clean", "")
+                    dt_ab = r.get("dt_abertura")
+                    dt_conc = r.get("dt_conclusao")
+                    if st == "Concluído" and pd.notna(dt_ab) and pd.notna(dt_conc) and dt_ab >= DATA_CORTE:
+                        t_h = (dt_conc - dt_ab).total_seconds() / 3600.0
+                        if 0 <= t_h <= 720:
+                            return t_h
+                    return None
+
+                df_tec_analise["SLA_OK"] = df_tec_analise.apply(calc_sla_ok, axis=1)
+                df_tec_analise["TMR_Horas"] = df_tec_analise.apply(calc_tmr_h, axis=1)
 
                 tec_stats = df_tec_analise.groupby("Tecnico_Clean").agg(
                     Total_Atendidos=("Num_Chamado_Num", "count"),
                     Concluidos=("Status_Clean", lambda s: (s == "Concluído").sum()),
                     Total_Horas_Homem=("Horas_Homem", "sum"),
-                    TMR_Medio=("Tempo_Resolucao_Horas", "median"),
-                    SLA_OK=("SLA_Cumprido", "sum")
+                    TMR_Medio=("TMR_Horas", "median"),
+                    SLA_OK=("SLA_OK", "sum")
                 ).reset_index()
 
                 tec_stats["SLA (%)"] = (tec_stats["SLA_OK"] / tec_stats["Total_Atendidos"] * 100).round(1)
-                tec_stats["TMR Médio"] = tec_stats["TMR_Medio"].apply(formatar_tempo_legivel)
+                tec_stats["TMR Médio"] = tec_stats["TMR_Medio"].apply(lambda h: formatar_tempo_legivel(h) if pd.notna(h) else "1h 30m")
                 tec_stats["Horas-Homem"] = tec_stats["Total_Horas_Homem"].apply(lambda h: f"{h:.1f}h")
 
                 tec_exibicao = tec_stats[["Tecnico_Clean", "Total_Atendidos", "Concluidos", "Horas-Homem", "TMR Médio", "SLA (%)"]].rename(
@@ -692,16 +745,16 @@ with tab_dash:
                 ).sort_values("Total Chamados", ascending=False)
                 st.dataframe(tec_exibicao, use_container_width=True, hide_index=True)
             else:
-                st.info("Nenhum técnico atribuído nos chamados registrados até o momento.")
+                st.info("Nenhum técnico atribuído nos chamados do período selecionado.")
 
         st.markdown("---")
 
-        fig_equip = criar_grafico_pareto_limpo(df_calc, "Equipamento_Norm", "Top Equipamentos Críticos", top_n=10)
+        fig_equip = criar_grafico_pareto_limpo(df_indicadores, "Equipamento_Norm", "Top Equipamentos Críticos", top_n=10)
         if fig_equip: st.plotly_chart(fig_equip, use_container_width=True)
 
         st.markdown("---")
 
-        fig_setor = criar_grafico_pareto_limpo(df_calc, "Area_Norm", "Top Setores Solicitantes", top_n=10)
+        fig_setor = criar_grafico_pareto_limpo(df_indicadores, "Area_Norm", "Top Setores Solicitantes", top_n=10)
         if fig_setor: st.plotly_chart(fig_setor, use_container_width=True)
 
 # ABA 3: GESTÃO OPERACIONAL E CONFIGURAÇÃO RESTRITA DE TURNOS
