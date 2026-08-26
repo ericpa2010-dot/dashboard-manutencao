@@ -9,6 +9,7 @@ import re
 import textwrap
 import plotly.express as px
 import plotly.graph_objects as go
+import numpy as np
 
 # Configuração da página
 st.set_page_config(page_title="Gestão de Manutenção", page_icon="🛠️", layout="wide")
@@ -129,48 +130,111 @@ def extrair_equipamento_infalivel(row):
         "Máquina ou Equipamento", "Equipamento", "Máquina", "Maquina", 
         "Equipamento / Sistema", "Equipamento/Sistema", "Sistema / Equipamento", 
         "Qual o equipamento?", "Qual é o equipamento?", "Local / Equipamento",
-        "Equipamento / Local", "Máquina / Equipamento", "Equipamento / Máquina"
+        "Equipamento / Local", "Máquina / Equipamento", "Equipamento / Máquina",
+        "Nome do Equipamento", "Aparelho"
     ]
     for c in candidatos:
         if c in row.index and pd.notna(row[c]) and str(row[c]).strip() != "":
             return str(row[c]).strip()
             
+    candidatos_kw = ["equip", "maquin", "máquin", "aparelho", "sistema"]
     for col in row.index:
-        col_str = str(col).lower()
-        if ("equip" in col_str or "maquin" in col_str or "máquin" in col_str) and pd.notna(row[col]):
+        col_clean = str(col).strip().lower()
+        if any(kw in col_clean for kw in candidatos_kw):
             val = str(row[col]).strip()
-            if val != "" and val.lower() not in ["nan", "none", "null"]:
+            if val != "" and val.lower() not in ["nan", "none", "null", "não informado", "nao informado", "-"]:
                 return val
-                
+
+    desc = ""
+    for col in row.index:
+        c_lower = str(col).lower()
+        if any(k in c_lower for k in ["problema", "descri", "observa", "chamado"]):
+            desc += " " + str(row[col])
+            
+    desc_lower = desc.lower()
+    equip_keywords = [
+        ("forno", "Forno AR"),
+        ("campanula", "Campânula AR"),
+        ("campânula", "Campânula AR"),
+        ("satisloh", "Satisloh"),
+        ("ultra", "Ultra Ópticos"),
+        ("polidora", "Polidora"),
+        ("biseladora", "Biseladora"),
+        ("gerador", "Gerador"),
+        ("spin", "Spin AR"),
+        ("darter", "Darter"),
+        ("nidek", "Nidek"),
+        ("lensometro", "Lensômetro"),
+        ("lensômetro", "Lensômetro"),
+        ("compressor", "Compressor"),
+        ("ultrassom", "Ultrassom")
+    ]
+    
+    for kw, label in equip_keywords:
+        if kw in desc_lower:
+            return f"{label} (Inferido)"
+            
     return "Não informado"
 
 def parse_data_infalivel(val):
-    if not val or pd.isna(val):
+    if val is None or pd.isna(val):
         return pd.NaT
+    if isinstance(val, (pd.Timestamp, datetime)):
+        return pd.Timestamp(val)
+        
     s = str(val).replace('\xa0', ' ').strip()
     if s.lower() in ["nan", "none", "", "-", "null"]:
         return pd.NaT
-    
-    m_br = re.search(r'(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?', s)
-    if m_br:
-        d, m, y = int(m_br.group(1)), int(m_br.group(2)), int(m_br.group(3))
-        h = int(m_br.group(4)) if m_br.group(4) is not None else 0
-        mi = int(m_br.group(5)) if m_br.group(5) is not None else 0
-        sec = int(m_br.group(6)) if m_br.group(6) is not None else 0
-        try:
-            return datetime(y, m, d, h, mi, sec)
-        except ValueError:
-            pass
 
-    return pd.to_datetime(s, errors="coerce", dayfirst=True)
+    try:
+        dt = pd.to_datetime(s, dayfirst=True, errors='coerce')
+        if pd.notna(dt):
+            return dt
+    except:
+        pass
+
+    try:
+        dt = pd.to_datetime(s, dayfirst=False, errors='coerce')
+        if pd.notna(dt):
+            return dt
+    except:
+        pass
+
+    return pd.NaT
 
 def extrair_dt_abertura(row):
-    val = extrair_campo(row, ["Carimbo de data/hora", "Carimbo de Data/Hora", "Data/Hora", "Data de Abertura", "Data"], "")
-    return parse_data_infalivel(val)
+    val = extrair_campo(row, ["Carimbo de data/hora", "Carimbo de Data/Hora", "Data/Hora", "Data de Abertura", "Data", "Timestamp", "Carimbo de data / hora"], "")
+    if val != "":
+        dt = parse_data_infalivel(val)
+        if pd.notna(dt):
+            return dt
+            
+    for col in row.index:
+        col_lower = str(col).lower()
+        if any(k in col_lower for k in ["carimbo", "data/hora", "abertura", "timestamp"]):
+            val_raw = str(row[col]).strip()
+            dt = parse_data_infalivel(val_raw)
+            if pd.notna(dt):
+                return dt
+                
+    return pd.NaT
 
 def extrair_dt_conclusao(row):
     val = extrair_campo(row, ["Data de conclusão", "Data de Conclusão"], "")
-    return parse_data_infalivel(val)
+    if val != "":
+        dt = parse_data_infalivel(val)
+        if pd.notna(dt):
+            return dt
+            
+    for col in row.index:
+        col_lower = str(col).lower()
+        if "conclu" in col_lower or "encerra" in col_lower:
+            val_raw = str(row[col]).strip()
+            dt = parse_data_infalivel(val_raw)
+            if pd.notna(dt):
+                return dt
+                
+    return pd.NaT
 
 def formatar_dt_exibicao(dt, val_raw=""):
     if pd.notna(dt):
@@ -180,7 +244,7 @@ def formatar_dt_exibicao(dt, val_raw=""):
 
 def formatar_tempo_legivel(horas):
     if pd.isna(horas) or horas is None or horas < 0:
-        return "0s"
+        return "-"
     total_sec = int(round(horas * 3600))
     dias = total_sec // (24 * 3600)
     sec_restantes = total_sec % (24 * 3600)
@@ -195,6 +259,19 @@ def formatar_tempo_legivel(horas):
     if mins > 0: partes.append(f"{mins}m")
     if secs > 0 or not partes: partes.append(f"{secs}s")
     return " ".join(partes)
+
+def formatar_tempo_curto(horas):
+    if pd.isna(horas) or horas is None or horas < 0:
+        return "-"
+    total_min = int(round(horas * 60))
+    h = total_min // 60
+    m = total_min % 60
+    if h > 0 and m > 0:
+        return f"{h}h {m}m"
+    elif h > 0:
+        return f"{h}h"
+    else:
+        return f"{m}m"
 
 def sanitizar_prioridade_universal(r):
     p_raw = str(extrair_campo(r, ["Prioridade", "Prioridade Sugerida"], "")).strip().lower()
@@ -267,8 +344,8 @@ def load_and_process_data():
     df_calc["Prioridade_Clean"] = df_calc.apply(sanitizar_prioridade_universal, axis=1)
     df_calc["Status_Clean"] = df_calc.apply(obter_status_sanitizado, axis=1)
     
-    df_calc["dt_abertura"] = pd.to_datetime(df_calc.apply(extrair_dt_abertura, axis=1), errors="coerce")
-    df_calc["dt_conclusao"] = pd.to_datetime(df_calc.apply(extrair_dt_conclusao, axis=1), errors="coerce")
+    df_calc["dt_abertura"] = df_calc.apply(extrair_dt_abertura, axis=1)
+    df_calc["dt_conclusao"] = df_calc.apply(extrair_dt_conclusao, axis=1)
 
     METAS_SLA = {"Alta": 4.0, "Média": 8.0, "Baixa": 48.0}
     df_calc["Meta_SLA_Horas"] = df_calc["Prioridade_Clean"].map(METAS_SLA).fillna(8.0)
@@ -316,7 +393,7 @@ if not df_calc.empty:
     fuso_br = pytz.timezone("America/Sao_Paulo")
     agora_br = datetime.now(fuso_br)
     agora_naive_geral = pd.Timestamp(agora_br.replace(tzinfo=None))
-    DATA_CORTE = pd.Timestamp(2026, 8, 23, 0, 0, 0)
+    DATA_CORTE_TECNICA = pd.Timestamp(2026, 8, 23, 0, 0, 0)
 
 tab_abertura, tab_dash, tab_gestao = st.tabs(["📌 Abrir Chamado", "📊 Dashboard & SLA", "⚙️ Gestão Operacional"])
 
@@ -388,7 +465,7 @@ with tab_dash:
     with col_titulo:
         st.title("📊 Painel Gerencial & SLA")
     with col_filtro:
-        opcao_periodo = st.selectbox("Filtro dos Indicadores", ["Todo o Histórico", "Últimos 90 dias", "Últimos 30 dias", "Este Mês", "Este Ano"], index=0)
+        opcao_periodo = st.selectbox("Filtro dos Indicadores", ["Últimos 30 dias", "Últimos 90 dias", "Este Mês", "Este Ano", "Todo o Histórico"], index=0)
 
     if df_calc.empty:
         st.info("Nenhum dado registrado na planilha até o momento.")
@@ -416,17 +493,31 @@ with tab_dash:
         total_concluidos_geral = len(df_indicadores[df_indicadores["Status_Clean"] == "Concluído"])
         taxa_conclusao_geral = (total_concluidos_geral / total_chamados_geral * 100) if total_chamados_geral > 0 else 100.0
 
-        df_concluidos = df_indicadores.dropna(subset=["dt_conclusao", "dt_abertura"]).copy()
-        if not df_concluidos.empty:
-            s_conc = pd.to_datetime(df_concluidos["dt_conclusao"], errors="coerce")
-            s_ab = pd.to_datetime(df_concluidos["dt_abertura"], errors="coerce")
-            df_concluidos["Tempo_Resolucao_Horas"] = (s_conc - s_ab).dt.total_seconds() / 3600.0
-            df_concluidos = df_concluidos[df_concluidos["Tempo_Resolucao_Horas"] >= 0]
-            df_tmr_operacional = df_concluidos[(df_concluidos["Tempo_Resolucao_Horas"] > 0) & (df_concluidos["Tempo_Resolucao_Horas"] <= 720)]
-            tmr_geral_num = df_tmr_operacional["Tempo_Resolucao_Horas"].median() if not df_tmr_operacional.empty else 0.0
-        else:
-            df_concluidos["Tempo_Resolucao_Horas"] = []
-            tmr_geral_num = 0.0
+        def calcular_tmr_mediano_geral(df_input):
+            df_conc = df_input[df_input["Status_Clean"] == "Concluído"].copy()
+            if df_conc.empty:
+                return 0.0
+
+            tempos = []
+            for _, r in df_conc.iterrows():
+                dt_ab = r.get("dt_abertura")
+                dt_conc = r.get("dt_conclusao")
+                hh = r.get("Horas_Homem", 0.0)
+
+                if pd.notna(dt_ab) and pd.notna(dt_conc):
+                    dur = (dt_conc - dt_ab).total_seconds() / 3600.0
+                    if 0.01 <= dur <= 720:
+                        tempos.append(dur)
+                        continue
+
+                if pd.notna(hh) and hh > 0:
+                    tempos.append(hh)
+
+            if tempos:
+                return float(np.median(tempos))
+            return 1.5
+
+        tmr_geral_num = calcular_tmr_mediano_geral(df_indicadores)
 
         c1, c2, c3, c4, c5 = st.columns(5)
         c1.metric("Total Chamados", total_chamados_geral)
@@ -488,7 +579,7 @@ with tab_dash:
                 pct_saude = sum(somas_saude) / len(somas_saude) if somas_saude else 100.0
                 cor_status = "#22C55E" if pct_saude > 50.0 else ("#F59E0B" if pct_saude > 20.0 else "#EF4444")
                 if not em_expediente:
-                    texto_status = f"{pct_saude:.1f}% ⏸️ Congelado"
+                    texto_status = f"{pct_saude:.1f}% (⏸️ Pausado)"
                 else:
                     texto_status = f"{pct_saude:.1f}% ({qtd_a} ativos)"
 
@@ -520,7 +611,7 @@ with tab_dash:
 
         st.markdown("---")
 
-        # Monitoramento Operacional de Chamados Ativos em Aberto COM CORES DINÂMICAS DE SLA (VERDE -> AMARELO -> VERMELHO)
+        # Monitoramento Operacional de Chamados Ativos em Aberto COM CORES DINÂMICAS DE SLA
         st.markdown(f"##### 🚨 Monitoramento Operacional (Chamados Ativos em Aberto: {em_aberto})")
         df_abertos = df_calc[df_calc["Status_Clean"].isin(["Pendente", "Atuando"])].copy()
         if not df_abertos.empty:
@@ -529,10 +620,10 @@ with tab_dash:
             for _, row in df_abertos.iterrows():
                 dt_ab = row.get("dt_abertura")
                 meta = row.get("Meta_SLA_Horas", 8.0)
-                raw_ab = extrair_campo(row, ["Carimbo de data/hora", "Carimbo de Data/Hora", "Data/Hora", "Data de Abertura"], "")
+                raw_ab = extrair_campo(row, ["Carimbo de data/hora", "Carimbo de Data/Hora", "Data/Hora", "Data de Abertura", "Data", "Timestamp"], "")
                 dt_ab_str = formatar_dt_exibicao(dt_ab, raw_ab)
 
-                if pd.notna(dt_ab) and dt_ab < DATA_CORTE:
+                if pd.notna(dt_ab) and dt_ab < DATA_CORTE_TECNICA:
                     situacao = "100% (Legado)"
                     tempo_dec_str = "✅ Anistia (Legado)"
                 elif pd.notna(dt_ab):
@@ -540,13 +631,13 @@ with tab_dash:
                     tempo_restante = meta - tempo_decorrido
                     pct_v = max(0.0, (tempo_restante / meta) * 100.0)
                     
+                    sufixo_exp = " (⏸️ Pausado)" if not em_expediente else ""
                     if tempo_restante >= 0:
-                        sufixo_exp = " (Pausado)" if not em_expediente else ""
                         situacao = f"{pct_v:.0f}% Prazo Restante{sufixo_exp}"
-                        tempo_dec_str = f"⏳ {formatar_tempo_legivel(tempo_restante)} restantes{sufixo_exp}"
+                        tempo_dec_str = f"⏳ {formatar_tempo_curto(tempo_restante)} restantes{sufixo_exp}"
                     else:
                         situacao = f"🔴 0% Estourado"
-                        tempo_dec_str = f"🔴 Estourado (+{formatar_tempo_legivel(abs(tempo_restante))})"
+                        tempo_dec_str = f"🔴 Estourado (+{formatar_tempo_curto(abs(tempo_restante))})"
                 else:
                     situacao = "100% (Sem data)"
                     tempo_dec_str = "-"
@@ -616,7 +707,7 @@ with tab_dash:
             raw_ab = extrair_campo(row, ["Carimbo de data/hora", "Carimbo de Data/Hora", "Data/Hora", "Data de Abertura"], "")
             dt_ab_str = formatar_dt_exibicao(dt_ab, raw_ab)
 
-            if pd.notna(dt_ab) and dt_ab < DATA_CORTE:
+            if pd.notna(dt_ab) and dt_ab < DATA_CORTE_TECNICA:
                 tmr_str = formatar_tempo_legivel((dt_conc - dt_ab).total_seconds() / 3600.0) if pd.notna(dt_conc) else "Legado"
                 sit_str = "✅ Cumprido (Legado)"
                 status_disp = "🟢 Concluído" if st_str == "Concluído" else ("🟣 Atuando" if st_str == "Atuando" else "🟡 Pendente")
@@ -687,63 +778,79 @@ with tab_dash:
 
         st.markdown("---")
 
-        # Desempenho por Técnico - CORRIGIDO PARA RESPEITAR O PERÍODO FILTRADO E AMNISTIA LEGADO
-        st.markdown(f"##### 👷 Desempenho por Técnico & Horas Aplicadas ({opcao_periodo})")
+        # Desempenho por Técnico - DETALHAMENTO DE TMR POR PRIORIDADE (ALTA, MÉDIA, BAIXA) E HORAS
+        st.markdown(f"##### 👷 Desempenho por Técnico & Tempo Médio por Prioridade ({opcao_periodo})")
         if not df_indicadores.empty:
             df_tec_analise = df_indicadores[df_indicadores["Tecnico_Clean"] != "Não atribuído"].copy()
             if not df_tec_analise.empty:
-                def calc_sla_ok(r):
-                    st = r.get("Status_Clean", "")
+                METAS_SLA = {"Alta": 4.0, "Média": 8.0, "Baixa": 48.0}
+
+                def calc_duracao_h(r):
+                    st_val = r.get("Status_Clean", "")
                     dt_ab = r.get("dt_abertura")
                     dt_conc = r.get("dt_conclusao")
-                    meta = r.get("Meta_SLA_Horas", 8.0)
-                    
-                    if pd.isna(dt_ab) or dt_ab < DATA_CORTE:
+                    if st_val == "Concluído" and pd.notna(dt_ab) and pd.notna(dt_conc) and dt_ab >= DATA_CORTE_TECNICA:
+                        dur = (dt_conc - dt_ab).total_seconds() / 3600.0
+                        if 0 <= dur <= 720:
+                            return dur
+                    return np.nan
+
+                def calc_sla_ok(r):
+                    st_val = r.get("Status_Clean", "")
+                    dt_ab = r.get("dt_abertura")
+                    dt_conc = r.get("dt_conclusao")
+                    prio = r.get("Prioridade_Clean", "Média")
+                    meta = METAS_SLA.get(prio, 8.0)
+
+                    if pd.isna(dt_ab) or dt_ab < DATA_CORTE_TECNICA:
                         return True
-                        
-                    if st == "Concluído":
+
+                    if st_val == "Concluído":
                         if pd.notna(dt_conc):
-                            t_h = (dt_conc - dt_ab).total_seconds() / 3600.0
-                            return t_h <= meta
+                            dur = (dt_conc - dt_ab).total_seconds() / 3600.0
+                            return dur <= meta
                         return True
                     else:
                         agora = pd.Timestamp(datetime.now(pytz.timezone("America/Sao_Paulo")).replace(tzinfo=None))
-                        t_h = (agora - dt_ab).total_seconds() / 3600.0
-                        return t_h <= meta
+                        dur = (agora - dt_ab).total_seconds() / 3600.0
+                        return dur <= meta
 
-                def calc_tmr_h(r):
-                    st = r.get("Status_Clean", "")
-                    dt_ab = r.get("dt_abertura")
-                    dt_conc = r.get("dt_conclusao")
-                    if st == "Concluído" and pd.notna(dt_ab) and pd.notna(dt_conc) and dt_ab >= DATA_CORTE:
-                        t_h = (dt_conc - dt_ab).total_seconds() / 3600.0
-                        if 0 <= t_h <= 720:
-                            return t_h
-                    return None
-
+                df_tec_analise["Duracao_H"] = df_tec_analise.apply(calc_duracao_h, axis=1)
                 df_tec_analise["SLA_OK"] = df_tec_analise.apply(calc_sla_ok, axis=1)
-                df_tec_analise["TMR_Horas"] = df_tec_analise.apply(calc_tmr_h, axis=1)
 
-                tec_stats = df_tec_analise.groupby("Tecnico_Clean").agg(
-                    Total_Atendidos=("Num_Chamado_Num", "count"),
-                    Concluidos=("Status_Clean", lambda s: (s == "Concluído").sum()),
-                    Total_Horas_Homem=("Horas_Homem", "sum"),
-                    TMR_Medio=("TMR_Horas", "median"),
-                    SLA_OK=("SLA_OK", "sum")
-                ).reset_index()
+                tecnicos_unicos = df_tec_analise["Tecnico_Clean"].unique()
+                linhas_tec = []
 
-                tec_stats["SLA (%)"] = (tec_stats["SLA_OK"] / tec_stats["Total_Atendidos"] * 100).round(1)
-                tec_stats["TMR Médio"] = tec_stats["TMR_Medio"].apply(lambda h: formatar_tempo_legivel(h) if pd.notna(h) else "1h 30m")
-                tec_stats["Horas-Homem"] = tec_stats["Total_Horas_Homem"].apply(lambda h: f"{h:.1f}h")
+                for tec in tecnicos_unicos:
+                    sub = df_tec_analise[df_tec_analise["Tecnico_Clean"] == tec]
+                    tot = len(sub)
+                    conc = len(sub[sub["Status_Clean"] == "Concluído"])
+                    hh_sum = sub["Horas_Homem"].sum()
+                    sla_pct = (sub["SLA_OK"].sum() / tot * 100.0) if tot > 0 else 100.0
 
-                tec_exibicao = tec_stats[["Tecnico_Clean", "Total_Atendidos", "Concluidos", "Horas-Homem", "TMR Médio", "SLA (%)"]].rename(
-                    columns={
-                        "Tecnico_Clean": "Técnico Responsável",
-                        "Total_Atendidos": "Total Chamados",
-                        "Concluidos": "Concluídos"
-                    }
-                ).sort_values("Total Chamados", ascending=False)
-                st.dataframe(tec_exibicao, use_container_width=True, hide_index=True)
+                    tmr_geral = sub["Duracao_H"].median()
+                    sub_alta = sub[(sub["Prioridade_Clean"] == "Alta") & (sub["Duracao_H"].notna())]
+                    sub_media = sub[(sub["Prioridade_Clean"] == "Média") & (sub["Duracao_H"].notna())]
+                    sub_baixa = sub[(sub["Prioridade_Clean"] == "Baixa") & (sub["Duracao_H"].notna())]
+
+                    tmr_alta = sub_alta["Duracao_H"].median() if not sub_alta.empty else np.nan
+                    tmr_media = sub_media["Duracao_H"].median() if not sub_media.empty else np.nan
+                    tmr_baixa = sub_baixa["Duracao_H"].median() if not sub_baixa.empty else np.nan
+
+                    linhas_tec.append({
+                        "Técnico Responsável": tec,
+                        "Total Chamados": tot,
+                        "Concluídos": conc,
+                        "Horas-Homem": f"{hh_sum:.1f}h",
+                        "TMR Geral": formatar_tempo_curto(tmr_geral),
+                        "TMR Alta (Meta 4h)": formatar_tempo_curto(tmr_alta),
+                        "TMR Média (Meta 8h)": formatar_tempo_curto(tmr_media),
+                        "TMR Baixa (Meta 48h)": formatar_tempo_curto(tmr_baixa),
+                        "SLA (%)": f"{sla_pct:.1f}%"
+                    })
+
+                df_exib_tec = pd.DataFrame(linhas_tec).sort_values("Total Chamados", ascending=False)
+                st.dataframe(df_exib_tec, use_container_width=True, hide_index=True)
             else:
                 st.info("Nenhum técnico atribuído nos chamados do período selecionado.")
 
