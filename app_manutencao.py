@@ -115,7 +115,6 @@ def get_sheet():
     return client.open_by_url(st.secrets["spreadsheet"]["url"]).worksheet("CHAMADOS")
 
 def extrair_campo_flexivel(row, candidatos, padrao=""):
-    # 1. Busca por igualdade exata ignorando maiúsculas e espaços nas pontas
     for c in candidatos:
         c_clean = str(c).strip().lower()
         for col_name in row.index:
@@ -125,7 +124,6 @@ def extrair_campo_flexivel(row, candidatos, padrao=""):
                 if val != "" and val.lower() not in ["nan", "none", "null"]:
                     return val
 
-    # 2. Busca ignorando caracteres especiais (espaços, barras, traços)
     for c in candidatos:
         c_alnum = re.sub(r'[^a-z0-9]', '', str(c).lower())
         for col_name in row.index:
@@ -135,7 +133,6 @@ def extrair_campo_flexivel(row, candidatos, padrao=""):
                 if val != "" and val.lower() not in ["nan", "none", "null"]:
                     return val
 
-    # 3. Busca por palavra-chave contida
     for c in candidatos:
         c_clean = str(c).strip().lower()
         if len(c_clean) > 3:
@@ -208,7 +205,6 @@ def parse_data_infalivel(val):
     if s.lower() in ["nan", "none", "", "-", "null", "0"]:
         return pd.NaT
     
-    # Suporte a número serial de data do Excel / Google Sheets
     try:
         val_float = float(s)
         if val_float > 30000:
@@ -216,7 +212,6 @@ def parse_data_infalivel(val):
     except (ValueError, TypeError):
         pass
 
-    # Formato BR: DD/MM/YYYY HH:MM:SS ou DD/MM/YYYY
     m_br = re.search(r'(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?', s)
     if m_br:
         d, m, y = int(m_br.group(1)), int(m_br.group(2)), int(m_br.group(3))
@@ -226,7 +221,6 @@ def parse_data_infalivel(val):
         try: return pd.Timestamp(y, m, d, h, mi, sec)
         except ValueError: pass
 
-    # Formato ISO: YYYY-MM-DD
     m_iso = re.search(r'(\d{4})[/.-](\d{1,2})[/.-](\d{1,2})(?:\s+|T)?(\d{1,2})?:?(\d{1,2})?:?(\d{1,2})?', s)
     if m_iso:
         y, m, d = int(m_iso.group(1)), int(m_iso.group(2)), int(m_iso.group(3))
@@ -494,8 +488,6 @@ with tab_dash:
         st.markdown("##### 📅 Volumetria de Chamados por Período (Abertos vs. Concluídos)")
         
         df_validos = df_calc.dropna(subset=["dt_abertura"]).copy()
-        
-        # Caso haja registros onde dt_abertura falhou, usa todo o conjunto como fallback de tempo
         if df_validos.empty: df_validos = df_calc.copy()
 
         inicio_hoje = agora_naive_geral.floor("D")
@@ -568,6 +560,9 @@ with tab_dash:
                         <span style="font-size:0.8rem; color:#94A3B8; font-weight:600;">Meta: {formatar_tempo_legivel(meta_horas)}</span>
                     </div>
                     <div style="font-size:1.8rem; font-weight:800; color:{cor_status}; margin:6px 0;">{texto_status}</div>
+                    <div style="background-color:#334155; border-radius:6px; height:12px; width:100%; margin:10px 0; overflow:hidden;">
+                        <div style="background-color:{cor_status}; width:{pct_saude:.1f}%; height:100%; border-radius:6px; transition: width 0.5s ease;"></div>
+                    </div>
                     <div style="margin-top:8px; padding-top:8px; border-top:1px solid #334155; font-size:0.8rem; color:#CBD5E1; display:flex; justify-content:space-between;">
                         <span>🟣 Atuando: <b style="color:#C084FC;">{qtd_atuando}</b></span>
                         <span>🟡 Pendente: <b style="color:#FBBF24;">{qtd_pendente}</b></span>
