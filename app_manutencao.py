@@ -626,7 +626,7 @@ with tab_dash:
                 elif pct > 20.0: return ['background-color: #78350F; color: #FDE68A; font-weight: 700;'] * len(row)
                 else: return ['background-color: #7F1D1D; color: #FECDD3; font-weight: 700;'] * len(row)
 
-            styled_ativos = df_ativos.drop(columns=["pct_num"]).style.apply(colorir_linha_ativos, axis=1)
+            styled_ativos = df_ativos.style.apply(colorir_linha_ativos, axis=1).hide(subset=["pct_num"], axis="columns")
             st.dataframe(styled_ativos, use_container_width=True, hide_index=True)
         else:
             st.success("✅ Nenhum chamado ativo pendente no momento.")
@@ -786,26 +786,46 @@ with tab_gestao:
             st.rerun()
 
         st.markdown("---")
-        st.markdown("##### 📋 Chamados em Monitoramento (Pendente / Atuando)")
-        
-        df_abertos_gestao = df_calc[df_calc["Status_Clean"].isin(["Pendente", "Atuando"])].sort_values("Num_Chamado_Num", ascending=False)
-        if not df_abertos_gestao.empty:
-            cols_gestao_view = ["Num_Chamado_Num", "Solicitante_Norm", "Area_Norm", "Equipamento_Norm", "Problema_Norm", "Prioridade_Clean", "Status_Clean", "Tecnico_Clean"]
-            df_view_table = df_abertos_gestao[cols_gestao_view].rename(columns={
-                "Num_Chamado_Num": "Nº", "Solicitante_Norm": "Solicitante", "Area_Norm": "Área", 
-                "Equipamento_Norm": "Equipamento", "Problema_Norm": "Problema", "Prioridade_Clean": "Prioridade",
-                "Status_Clean": "Status", "Tecnico_Clean": "Técnico"
-            })
+        col_tit_g, col_flt_g = st.columns([2, 2])
+        with col_tit_g:
+            st.markdown("##### 📋 Monitoramento & Planilha de Chamados")
+        with col_flt_g:
+            opcao_filtro_gestao = st.radio("Filtro de Exibição:", ["🟡 Apenas Em Aberto (Pendente / Atuando)", "📋 Planilha Completa (Todos os Chamados)"], horizontal=True)
+
+        if "Apenas Em Aberto" in opcao_filtro_gestao:
+            df_gestao_view = df_calc[df_calc["Status_Clean"].isin(["Pendente", "Atuando"])].sort_values("Num_Chamado_Num", ascending=False)
+        else:
+            df_gestao_view = df_calc.sort_values("Num_Chamado_Num", ascending=False)
+
+        if not df_gestao_view.empty:
+            lista_gestao_tabela = []
+            for _, r in df_gestao_view.iterrows():
+                dt_ab = r.get("dt_abertura")
+                raw_ab = extrair_campo_flexivel(r, ["Carimbo de data/hora", "Carimbo de Data/Hora", "Data/Hora"], "")
+                lista_gestao_tabela.append({
+                    "Nº": r.get("Num_Chamado_Num"),
+                    "Abertura": formatar_dt_exibicao(dt_ab, raw_ab),
+                    "Solicitante": r.get("Solicitante_Norm"),
+                    "Área": r.get("Area_Norm"),
+                    "Equipamento": r.get("Equipamento_Norm"),
+                    "Problema": r.get("Problema_Norm"),
+                    "Prioridade": r.get("Prioridade_Clean"),
+                    "Status": r.get("Status_Clean"),
+                    "Técnico": r.get("Tecnico_Clean")
+                })
+            df_view_table = pd.DataFrame(lista_gestao_tabela)
             st.dataframe(df_view_table, use_container_width=True, hide_index=True)
         else:
-            st.success("✅ Nenhum chamado pendente para tratamento no momento.")
+            st.info("ℹ️ Nenhum chamado encontrado para o filtro selecionado.")
 
         st.markdown("---")
         st.subheader("Atualizar Status de Chamado & Apontamento Técnico")
         
-        if not df_abertos_gestao.empty:
-            opcoes_chamados = [f"#{r['Num_Chamado_Num']} - {r['Equipamento_Norm']} ({r['Solicitante_Norm']}) | Status: {r['Status_Clean']}" for _, r in df_abertos_gestao.iterrows()]
-            chamado_sel_str = st.selectbox("Selecione um chamado ativo para atualizar:", opcoes_chamados)
+        df_para_selecao = df_gestao_view if not df_gestao_view.empty else df_calc.sort_values("Num_Chamado_Num", ascending=False)
+        
+        if not df_para_selecao.empty:
+            opcoes_chamados = [f"#{r['Num_Chamado_Num']} - {r['Equipamento_Norm']} ({r['Solicitante_Norm']}) | Status: {r['Status_Clean']} | Tec: {r['Tecnico_Clean']}" for _, r in df_para_selecao.iterrows()]
+            chamado_sel_str = st.selectbox("Selecione o chamado para editar:", opcoes_chamados)
             num_chamado_sel = int(chamado_sel_str.split(" - ")[0].replace("#", ""))
         else:
             num_chamado_sel = st.number_input("Informe o Nº do Chamado do Histórico", min_value=1, step=1)
@@ -815,7 +835,7 @@ with tab_gestao:
             idx_linha = df_calc[mask_num].index[0]
             linha_atual = df_raw.iloc[idx_linha]
 
-            st.info(f"Tratando Chamado #{num_chamado_sel}: {extrair_campo_flexivel(linha_atual, ['Equipamento / Sistema / Local', 'Máquina ou Equipamento', 'Equipamento'])}")
+            st.info(f"Editando Chamado #{num_chamado_sel}: {extrair_campo_flexivel(linha_atual, ['Equipamento / Sistema / Local', 'Máquina ou Equipamento', 'Equipamento'])}")
 
             with st.form("form_atualizacao"):
                 col_a, col_b = st.columns(2)
