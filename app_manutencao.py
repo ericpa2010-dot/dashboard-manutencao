@@ -161,15 +161,17 @@ def calcular_horas_uteis(dt_inicio, dt_fim, hora_inicio=None, hora_fim=None):
 
 def extrair_campo(row, candidatos, padrao=""):
     for c in candidatos:
-        if c in row.index and pd.notna(row[c]) and str(row[c]).strip() != "":
-            return str(row[c]).strip()
+        if c in row.index and pd.notna(row[c]):
+            val = str(row[c]).replace('\xa0', ' ').strip()
+            if val != "" and val.lower() not in ["nan", "none", "null"]:
+                return val
     return padrao
 
 def parse_data_infalivel(val):
     if not val or pd.isna(val):
         return pd.NaT
     s = str(val).replace('\xa0', ' ').strip()
-    if s.lower() in ["nan", "none", "", "-", "null"]:
+    if s.lower() in ["nan", "none", "", "-", "null", "0"]:
         return pd.NaT
     
     m_br = re.search(r'(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?', s)
@@ -188,13 +190,13 @@ def extrair_dt_abertura(row):
     return parse_data_infalivel(val)
 
 def extrair_dt_conclusao(row):
-    val = extrair_campo(row, ["Data de conclusão", "Data de Conclusão"], "")
+    val = extrair_campo(row, ["Data de conclusão", "Data de Conclusão", "Data Conclusão"], "")
     return parse_data_infalivel(val)
 
 def formatar_dt_exibicao(dt, val_raw=""):
     if pd.notna(dt): return dt.strftime("%d/%m/%Y %H:%M:%S")
     s = str(val_raw).replace('\xa0', ' ').strip()
-    return s if s not in ["", "nan", "None"] else "-"
+    return s if s not in ["", "nan", "None", "-"] else "-"
 
 def formatar_tempo_legivel(horas):
     if pd.isna(horas) or horas is None or horas < 0: return "0s"
@@ -221,14 +223,29 @@ def sanitizar_prioridade_universal(r):
     return "Média"
 
 def obter_status_sanitizado(r):
-    dt_conc = extrair_campo(r, ["Data de conclusão", "Data de Conclusão"], "")
-    if dt_conc != "" and dt_conc != "nan" and dt_conc != "None": return "Concluído"
+    dt_conc_raw = extrair_campo(r, ["Data de conclusão", "Data de Conclusão", "Data Conclusão"], "")
+    dt_conc_parsed = parse_data_infalivel(dt_conc_raw)
     
-    st_raw = str(extrair_campo(r, ["Status"], "")).strip().upper()
-    if "ATUAND" in st_raw or "ANDAMENTO" in st_raw: return "Atuando"
-    if "CONCLU" in st_raw or "RESOLV" in st_raw or "FECHAD" in st_raw: return "Concluído"
-    if "PENDENT" in st_raw or "ABERTO" in st_raw or "NOVO" in st_raw: return "Pendente"
+    if pd.notna(dt_conc_parsed):
+        return "Concluído"
+    
+    st_raw = extrair_campo(r, ["Status", "STATUS", "Situação", "Situacao"], "").upper()
+    if any(k in st_raw for k in ["CONCLU", "RESOLV", "FECHAD", "FINALIZAD"]):
+        return "Concluído"
+    if any(k in st_raw for k in ["ATUAND", "ANDAMENTO", "EM ATENDIMENTO", "EM ANDAMENTO"]):
+        return "Atuando"
     return "Pendente"
+
+def sanitizar_tecnico(r):
+    tec_raw = extrair_campo(r, ["Técnico Responsável", "Técnico", "Tecnico", "Técnico Responsavel", "Responsável", "Técnico Atribuído", "Atribuído a"], "")
+    tec_clean = tec_raw.strip().title()
+    if tec_clean == "" or tec_clean.lower() in ["nan", "none", "não atribuído", "nao atribuido", "-", "null", "eric (histórico geral)", "eric (historico geral)"]:
+        return "Eric"
+    if "Eric" in tec_clean:
+        return "Eric"
+    if "Felipe" in tec_clean:
+        return "Felipe"
+    return tec_clean
 
 @st.cache_data(ttl=30)
 def load_and_process_data():
@@ -249,13 +266,7 @@ def load_and_process_data():
     df_calc["Impacto_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["Qual é o impacto na operação?", "Impacto na operação", "Impacto"], "Não informado"), axis=1)
     df_calc["Area_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["Área do chamado", "Nome e Setor"], "Geral"), axis=1)
     
-    def extrair_tecnico_robusto(r):
-        tec_val = extrair_campo(r, ["Técnico Responsável", "Técnico", "Tecnico", "Técnico Responsavel", "Responsável", "Técnico Atribuído", "Atribuído a"], "")
-        if tec_val == "" or tec_val.lower() in ["nan", "none", "não atribuído", "-"]:
-            return "Eric (Histórico Geral)"
-        return tec_val
-
-    df_calc["Tecnico_Clean"] = df_calc.apply(extrair_tecnico_robusto, axis=1)
+    df_calc["Tecnico_Clean"] = df_calc.apply(sanitizar_tecnico, axis=1)
     df_calc["Prioridade_Clean"] = df_calc.apply(sanitizar_prioridade_universal, axis=1)
     df_calc["Status_Clean"] = df_calc.apply(obter_status_sanitizado, axis=1)
     
@@ -390,30 +401,16 @@ with tab_dash:
         opcao_periodo = st.selectbox("Filtro dos Indicadores", ["Todo o Histórico", "Últimos 90 dias", "Últimos 30 dias", "Este Mês", "Este Ano"], index=0)
 
     if not df_calc.empty:
-        # Filtro de Período para Estatísticas do Histórico
-        df_periodo = df_calc.copy()
-        if opcao_periodo != "Todo o Histórico":
-            limite_dt = None
-            if opcao_periodo == "Últimos 90 dias": limite_dt = agora_naive_geral - pd.Timedelta(days=90)
-            elif opcao_periodo == "Últimos 30 dias": limite_dt = agora_naive_geral - pd.Timedelta(days=30)
-            elif opcao_periodo == "Este Mês": limite_dt = agora_naive_geral.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-            elif opcao_periodo == "Este Ano": limite_dt = agora_naive_geral.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
-            
-            if limite_dt is not None:
-                # Mantém chamados do período E todos os chamados abertos atualmente
-                mask_periodo = (df_periodo["dt_abertura"] >= limite_dt) | (df_periodo["Status_Clean"].isin(["Pendente", "Atuando"]))
-                df_periodo = df_periodo[mask_periodo]
-
         status_abertos = ["Pendente", "Atuando"]
-        em_aberto = len(df_calc[df_calc["Status_Clean"].isin(status_abertos)]) # backlog total ativo é global
-        total_chamados_periodo = len(df_periodo)
-        total_concluidos_periodo = len(df_periodo[df_periodo["Status_Clean"] == "Concluído"])
-        taxa_conclusao_periodo = (total_concluidos_periodo / total_chamados_periodo * 100) if total_chamados_periodo > 0 else 100.0
+        em_aberto = len(df_calc[df_calc["Status_Clean"].isin(status_abertos)])
+        total_chamados_geral = len(df_calc)
+        total_concluidos_geral = len(df_calc[df_calc["Status_Clean"] == "Concluído"])
+        taxa_conclusao_geral = (total_concluidos_geral / total_chamados_geral * 100) if total_chamados_geral > 0 else 100.0
 
         em_turno = dentro_do_expediente(agora_naive_geral)
         status_expediente_str = "▶️ Ativo" if em_turno else "⏸️ Pausado (Fora do Expediente)"
 
-        df_concluidos = df_periodo.dropna(subset=["dt_conclusao", "dt_abertura"]).copy()
+        df_concluidos = df_calc.dropna(subset=["dt_conclusao", "dt_abertura"]).copy()
         if not df_concluidos.empty:
             df_concluidos["Tempo_Resolucao_Horas"] = df_concluidos.apply(
                 lambda r: calcular_horas_uteis(r["dt_abertura"], r["dt_conclusao"]), axis=1
@@ -423,9 +420,9 @@ with tab_dash:
             tmr_geral_num = 0.0
 
         c1, c2, c3, c4, c5 = st.columns(5)
-        c1.metric("Total Chamados", total_chamados_periodo)
+        c1.metric("Total Chamados", total_chamados_geral)
         c2.metric("Em Aberto", em_aberto)
-        c3.metric("Taxa Resolução", f"{taxa_conclusao_periodo:.1f}%")
+        c3.metric("Taxa Resolução", f"{taxa_conclusao_geral:.1f}%")
         c4.metric("TMR Mediano", formatar_tempo_legivel(tmr_geral_num))
         c5.metric("SLA / Expediente", status_expediente_str)
 
@@ -552,12 +549,12 @@ with tab_dash:
         st.markdown("---")
         col_hist_tit, col_hist_lim = st.columns([3, 1])
         with col_hist_tit:
-            st.markdown(f"##### 📋 Histórico Geral de Chamados & SLA (Total Exibido: {len(df_periodo)})")
+            st.markdown(f"##### 📋 Histórico Geral de Chamados & SLA (Total: {total_chamados_geral})")
         with col_hist_lim:
             limite_exibicao = st.selectbox("Exibir no histórico:", [50, 100, 200, "Todos"], index=0)
 
         lista_geral = []
-        for _, row in df_periodo.iterrows():
+        for _, row in df_calc.iterrows():
             st_str = str(row.get("Status_Clean", "Pendente"))
             dt_ab = row.get("dt_abertura")
             dt_conc = row.get("dt_conclusao")
@@ -638,7 +635,7 @@ with tab_dash:
                 df_concl_tec["SLA_OK"] = df_concl_tec["Tempo_Horas"] <= df_concl_tec["Meta_SLA_Horas"]
             
             linhas_tec = []
-            tecnicos_unicos = sorted(list(set(df_tec_full["Tecnico_Clean"].dropna().unique())))
+            tecnicos_unicos = ["Eric", "Felipe"]
             
             for tec in tecnicos_unicos:
                 sub_tec_all = df_tec_full[df_tec_full["Tecnico_Clean"] == tec]
@@ -687,11 +684,11 @@ with tab_dash:
                 st.dataframe(df_tec_exibicao, use_container_width=True, hide_index=True)
 
         st.markdown("---")
-        fig_equip = criar_grafico_pareto_limpo(df_periodo, "Equipamento_Norm", "Top Equipamentos Críticos", top_n=10)
+        fig_equip = criar_grafico_pareto_limpo(df_calc, "Equipamento_Norm", "Top Equipamentos Críticos", top_n=10)
         if fig_equip: st.plotly_chart(fig_equip, use_container_width=True)
 
         st.markdown("---")
-        fig_setor = criar_grafico_pareto_limpo(df_periodo, "Area_Norm", "Top Setores Solicitantes", top_n=10)
+        fig_setor = criar_grafico_pareto_limpo(df_calc, "Area_Norm", "Top Setores Solicitantes", top_n=10)
         if fig_setor: st.plotly_chart(fig_setor, use_container_width=True)
 
 # ABA 3: GESTÃO OPERACIONAL DE CHAMADOS
