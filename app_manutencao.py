@@ -509,7 +509,7 @@ with tab_dash:
             return textwrap.dedent(f"""
                 <div style="background-color:#1E293B; border:1px solid #334155; padding:14px; border-radius:12px; text-align:center;">
                     <div style="color:#94A3B8; font-size:0.85rem; font-weight:700; text-transform:uppercase;">{titulo}</div>
-                    <div style="color:#38BDF8; font-size:2rem; font-weight:800; margin:4px 0;">{total_periodo} <span style="font-size:0.85rem; color:#94A3B8; font-weight:500;">criados</span></div>
+                    <div style="color:#38BDF8; font-size:2rem; font-weight:800; margin:4px 0;">{total_periodo}</div>
                     <div style="margin-top:8px; font-size:0.8rem; font-weight:600; display:flex; justify-content:space-around; border-top:1px solid #334155; padding-top:8px;">
                         <span style="color:{cor_aberto};">🟡 <b>{abertos_periodo}</b> em aberto</span>
                         <span style="color:#22C55E;">🟢 <b>{concluidos_periodo}</b> concluídos</span>
