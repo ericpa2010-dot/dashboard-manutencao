@@ -114,10 +114,45 @@ def get_sheet():
     client = get_gspread_client()
     return client.open_by_url(st.secrets["spreadsheet"]["url"]).worksheet("CHAMADOS")
 
+def extrair_campo_flexivel(row, candidatos, padrao=""):
+    # 1. Busca por igualdade exata ignorando maiúsculas e espaços nas pontas
+    for c in candidatos:
+        c_clean = str(c).strip().lower()
+        for col_name in row.index:
+            col_clean = str(col_name).strip().lower()
+            if col_clean == c_clean:
+                val = str(row[col_name]).replace('\xa0', ' ').strip()
+                if val != "" and val.lower() not in ["nan", "none", "null"]:
+                    return val
+
+    # 2. Busca ignorando caracteres especiais (espaços, barras, traços)
+    for c in candidatos:
+        c_alnum = re.sub(r'[^a-z0-9]', '', str(c).lower())
+        for col_name in row.index:
+            col_alnum = re.sub(r'[^a-z0-9]', '', str(col_name).lower())
+            if col_alnum == c_alnum and c_alnum != "":
+                val = str(row[col_name]).replace('\xa0', ' ').strip()
+                if val != "" and val.lower() not in ["nan", "none", "null"]:
+                    return val
+
+    # 3. Busca por palavra-chave contida
+    for c in candidatos:
+        c_clean = str(c).strip().lower()
+        if len(c_clean) > 3:
+            for col_name in row.index:
+                col_clean = str(col_name).strip().lower()
+                if c_clean in col_clean:
+                    val = str(row[col_name]).replace('\xa0', ' ').strip()
+                    if val != "" and val.lower() not in ["nan", "none", "null"]:
+                        return val
+    return padrao
+
 def encontrar_coluna(headers, candidatos):
     for c in candidatos:
+        c_alnum = re.sub(r'[^a-z0-9]', '', str(c).lower())
         for idx, h in enumerate(headers):
-            if str(h).strip().lower() == str(c).strip().lower():
+            h_alnum = re.sub(r'[^a-z0-9]', '', str(h).lower())
+            if h_alnum == c_alnum and c_alnum != "":
                 return idx, h
     return None, None
 
@@ -166,14 +201,6 @@ def calcular_horas_uteis(dt_inicio, dt_fim, hora_inicio=None, hora_fim=None):
         
     return total_segundos / 3600.0
 
-def extrair_campo(row, candidatos, padrao=""):
-    for c in candidatos:
-        if c in row.index and pd.notna(row[c]):
-            val = str(row[c]).replace('\xa0', ' ').strip()
-            if val != "" and val.lower() not in ["nan", "none", "null"]:
-                return val
-    return padrao
-
 def parse_data_infalivel(val):
     if not val or pd.isna(val):
         return pd.NaT
@@ -181,6 +208,15 @@ def parse_data_infalivel(val):
     if s.lower() in ["nan", "none", "", "-", "null", "0"]:
         return pd.NaT
     
+    # Suporte a número serial de data do Excel / Google Sheets
+    try:
+        val_float = float(s)
+        if val_float > 30000:
+            return pd.to_datetime(val_float, unit='D', origin='1899-12-30')
+    except (ValueError, TypeError):
+        pass
+
+    # Formato BR: DD/MM/YYYY HH:MM:SS ou DD/MM/YYYY
     m_br = re.search(r'(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?', s)
     if m_br:
         d, m, y = int(m_br.group(1)), int(m_br.group(2)), int(m_br.group(3))
@@ -190,14 +226,24 @@ def parse_data_infalivel(val):
         try: return pd.Timestamp(y, m, d, h, mi, sec)
         except ValueError: pass
 
+    # Formato ISO: YYYY-MM-DD
+    m_iso = re.search(r'(\d{4})[/.-](\d{1,2})[/.-](\d{1,2})(?:\s+|T)?(\d{1,2})?:?(\d{1,2})?:?(\d{1,2})?', s)
+    if m_iso:
+        y, m, d = int(m_iso.group(1)), int(m_iso.group(2)), int(m_iso.group(3))
+        h = int(m_iso.group(4)) if m_iso.group(4) is not None else 0
+        mi = int(m_iso.group(5)) if m_iso.group(5) is not None else 0
+        sec = int(m_iso.group(6)) if m_iso.group(6) is not None else 0
+        try: return pd.Timestamp(y, m, d, h, mi, sec)
+        except ValueError: pass
+
     return pd.to_datetime(s, errors="coerce", dayfirst=True)
 
 def extrair_dt_abertura(row):
-    val = extrair_campo(row, ["Carimbo de data/hora", "Carimbo de Data/Hora", "Data/Hora", "Data de Abertura", "Data"], "")
+    val = extrair_campo_flexivel(row, ["Carimbo de data/hora", "Carimbo de Data/Hora", "Data/Hora", "Data de Abertura", "Data", "Timestamp"], "")
     return parse_data_infalivel(val)
 
 def extrair_dt_conclusao(row):
-    val = extrair_campo(row, ["Data de conclusão", "Data de Conclusão", "Data Conclusão"], "")
+    val = extrair_campo_flexivel(row, ["Data de conclusão", "Data de Conclusão", "Data Conclusão", "Conclusão"], "")
     return parse_data_infalivel(val)
 
 def formatar_dt_exibicao(dt, val_raw=""):
@@ -223,20 +269,20 @@ def formatar_tempo_legivel(horas):
     return " ".join(partes)
 
 def sanitizar_prioridade_universal(r):
-    p_raw = str(extrair_campo(r, ["Prioridade", "Prioridade Sugerida"], "")).strip().lower()
+    p_raw = str(extrair_campo_flexivel(r, ["Prioridade", "Prioridade Sugerida"], "")).strip().lower()
     if "alt" in p_raw: return "Alta"
     elif "med" in p_raw or "méd" in p_raw: return "Média"
     elif "baix" in p_raw: return "Baixa"
     return "Média"
 
 def obter_status_sanitizado(r):
-    dt_conc_raw = extrair_campo(r, ["Data de conclusão", "Data de Conclusão", "Data Conclusão"], "")
+    dt_conc_raw = extrair_campo_flexivel(r, ["Data de conclusão", "Data de Conclusão", "Data Conclusão"], "")
     dt_conc_parsed = parse_data_infalivel(dt_conc_raw)
     
     if pd.notna(dt_conc_parsed):
         return "Concluído"
     
-    st_raw = extrair_campo(r, ["Status", "STATUS", "Situação", "Situacao"], "").upper()
+    st_raw = extrair_campo_flexivel(r, ["Status", "STATUS", "Situação", "Situacao"], "").upper()
     if any(k in st_raw for k in ["CONCLU", "RESOLV", "FECHAD", "FINALIZAD"]):
         return "Concluído"
     if any(k in st_raw for k in ["ATUAND", "ANDAMENTO", "EM ATENDIMENTO", "EM ANDAMENTO"]):
@@ -244,7 +290,7 @@ def obter_status_sanitizado(r):
     return "Pendente"
 
 def sanitizar_tecnico(r):
-    tec_raw = extrair_campo(r, ["Técnico Responsável", "Técnico", "Tecnico", "Técnico Responsavel", "Responsável", "Técnico Atribuído", "Atribuído a"], "")
+    tec_raw = extrair_campo_flexivel(r, ["Técnico Responsável", "Técnico", "Tecnico", "Técnico Responsavel", "Responsável", "Técnico Atribuído", "Atribuído a"], "")
     tec_clean = tec_raw.strip().title()
     if tec_clean == "" or tec_clean.lower() in ["nan", "none", "não atribuído", "nao atribuido", "-", "null", "eric (histórico geral)", "eric (historico geral)"]:
         return "Eric"
@@ -264,14 +310,14 @@ def load_and_process_data():
     df.columns = [str(col).strip() for col in df.columns]
     df_calc = df.copy()
     
-    df_calc["Num_Chamado_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["N*Chamado", "Nº Chamado", "N° Chamado"], "0"), axis=1)
+    df_calc["Num_Chamado_Norm"] = df_calc.apply(lambda r: extrair_campo_flexivel(r, ["N*Chamado", "Nº Chamado", "N° Chamado", "Chamado"], "0"), axis=1)
     df_calc["Num_Chamado_Num"] = pd.to_numeric(df_calc["Num_Chamado_Norm"], errors="coerce").fillna(0).astype(int)
     
-    df_calc["Solicitante_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["Nome e Setor", "Nome e Setor Solicitante", "Solicitante", "Nome"], "Não informado"), axis=1)
-    df_calc["Equipamento_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["Equipamento / Sistema / Local", "Equipamento/Sistema/Local", "Máquina ou Equipamento"], "Não informado"), axis=1)
-    df_calc["Problema_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["Qual é o problema?", "Descrição do chamado", "Tipo de problema"], "Sem descrição"), axis=1)
-    df_calc["Impacto_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["Qual é o impacto na operação?", "Impacto na operação", "Impacto"], "Não informado"), axis=1)
-    df_calc["Area_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["Área do chamado", "Nome e Setor"], "Geral"), axis=1)
+    df_calc["Solicitante_Norm"] = df_calc.apply(lambda r: extrair_campo_flexivel(r, ["Nome e Setor", "Nome e Setor Solicitante", "Solicitante", "Nome"], "Não informado"), axis=1)
+    df_calc["Equipamento_Norm"] = df_calc.apply(lambda r: extrair_campo_flexivel(r, ["Equipamento / Sistema / Local", "Equipamento/Sistema/Local", "Máquina ou Equipamento", "Equipamento"], "Não informado"), axis=1)
+    df_calc["Problema_Norm"] = df_calc.apply(lambda r: extrair_campo_flexivel(r, ["Qual é o problema?", "Descrição do chamado", "Tipo de problema", "Problema"], "Sem descrição"), axis=1)
+    df_calc["Impacto_Norm"] = df_calc.apply(lambda r: extrair_campo_flexivel(r, ["Qual é o impacto na operação?", "Impacto na operação", "Impacto"], "Não informado"), axis=1)
+    df_calc["Area_Norm"] = df_calc.apply(lambda r: extrair_campo_flexivel(r, ["Área do chamado", "Área", "Setor"], "Geral"), axis=1)
     
     df_calc["Tecnico_Clean"] = df_calc.apply(sanitizar_tecnico, axis=1)
     df_calc["Prioridade_Clean"] = df_calc.apply(sanitizar_prioridade_universal, axis=1)
@@ -294,7 +340,7 @@ def calcular_tempo_resolucao_concluido(row):
     if pd.notna(dt_ab) and pd.notna(dt_conc) and dt_conc >= dt_ab:
         return calcular_horas_uteis(dt_ab, dt_conc)
     
-    hh_raw = str(extrair_campo(row, ["Horas-Homem Aplicadas (ex: 1.5)", "Horas-Homem", "Horas Homem", "Horas"], "")).replace(",", ".").strip()
+    hh_raw = str(extrair_campo_flexivel(row, ["Horas-Homem Aplicadas (ex: 1.5)", "Horas-Homem", "Horas Homem", "Horas"], "")).replace(",", ".").strip()
     try:
         v = float(hh_raw)
         if v > 0: return v
@@ -445,19 +491,45 @@ with tab_dash:
         c5.metric("SLA / Expediente", status_expediente_str)
 
         st.markdown("---")
-        st.markdown("##### 📅 Volumetria por Período")
+        st.markdown("##### 📅 Volumetria de Chamados por Período (Abertos vs. Concluídos)")
         
-        df_temp_validos = df_calc.dropna(subset=["dt_abertura"]).copy()
+        df_validos = df_calc.dropna(subset=["dt_abertura"]).copy()
+        
+        # Caso haja registros onde dt_abertura falhou, usa todo o conjunto como fallback de tempo
+        if df_validos.empty: df_validos = df_calc.copy()
+
         inicio_hoje = agora_naive_geral.floor("D")
         inicio_semana = inicio_hoje - pd.Timedelta(days=agora_naive_geral.weekday())
         inicio_mes = agora_naive_geral.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         inicio_ano = agora_naive_geral.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
 
-        ct1, ct2, ct3, ct4 = st.columns(4)
-        ct1.metric("Hoje", len(df_temp_validos[df_temp_validos["dt_abertura"] >= inicio_hoje]))
-        ct2.metric("Semana", len(df_temp_validos[df_temp_validos["dt_abertura"] >= inicio_semana]))
-        ct3.metric("Mês", len(df_temp_validos[df_temp_validos["dt_abertura"] >= inicio_mes]))
-        ct4.metric("Ano", len(df_temp_validos[df_temp_validos["dt_abertura"] >= inicio_ano]))
+        def render_card_periodo(titulo, dt_limite):
+            if "dt_abertura" in df_validos.columns and df_validos["dt_abertura"].notna().any():
+                sub = df_validos[df_validos["dt_abertura"] >= dt_limite]
+            else:
+                sub = df_validos
+                
+            total_periodo = len(sub)
+            abertos_periodo = len(sub[sub["Status_Clean"].isin(["Pendente", "Atuando"])])
+            concluidos_periodo = total_periodo - abertos_periodo
+            cor_aberto = "#FBBF24" if abertos_periodo > 0 else "#94A3B8"
+            
+            return textwrap.dedent(f"""
+                <div style="background-color:#1E293B; border:1px solid #334155; padding:14px; border-radius:12px; text-align:center;">
+                    <div style="color:#94A3B8; font-size:0.85rem; font-weight:700; text-transform:uppercase;">{titulo}</div>
+                    <div style="color:#38BDF8; font-size:2rem; font-weight:800; margin:4px 0;">{total_periodo} <span style="font-size:0.85rem; color:#94A3B8; font-weight:500;">criados</span></div>
+                    <div style="margin-top:8px; font-size:0.8rem; font-weight:600; display:flex; justify-content:space-around; border-top:1px solid #334155; padding-top:8px;">
+                        <span style="color:{cor_aberto};">🟡 <b>{abertos_periodo}</b> em aberto</span>
+                        <span style="color:#22C55E;">🟢 <b>{concluidos_periodo}</b> concluídos</span>
+                    </div>
+                </div>
+            """).strip()
+
+        col_vh, col_vs, col_vm, col_va = st.columns(4)
+        with col_vh: st.markdown(render_card_periodo("Hoje", inicio_hoje), unsafe_allow_html=True)
+        with col_vs: st.markdown(render_card_periodo("Esta Semana", inicio_semana), unsafe_allow_html=True)
+        with col_vm: st.markdown(render_card_periodo("Este Mês", inicio_mes), unsafe_allow_html=True)
+        with col_va: st.markdown(render_card_periodo("Este Ano", inicio_ano), unsafe_allow_html=True)
 
         st.markdown("---")
         st.markdown(f"##### ⏳ Barra de Vida & Saúde do SLA por Fila (Regime: Horário Comercial {st.session_state['hora_inicio_turno']:02d}:00 - {st.session_state['hora_fim_turno']:02d}:00)")
@@ -516,7 +588,7 @@ with tab_dash:
         for _, row in df_calc[df_calc["Status_Clean"].isin(["Pendente", "Atuando"])].iterrows():
             dt_ab = row.get("dt_abertura")
             meta = row.get("Meta_SLA_Horas", 8.0)
-            raw_ab = extrair_campo(row, ["Carimbo de data/hora", "Carimbo de Data/Hora", "Data/Hora"], "")
+            raw_ab = extrair_campo_flexivel(row, ["Carimbo de data/hora", "Carimbo de Data/Hora", "Data/Hora"], "")
             
             if pd.notna(dt_ab):
                 horas_decorridas_uteis = calcular_horas_uteis(dt_ab, agora_naive_geral)
@@ -577,7 +649,7 @@ with tab_dash:
             dt_ab = row.get("dt_abertura")
             dt_conc = row.get("dt_conclusao")
             meta = row.get("Meta_SLA_Horas", 8.0)
-            raw_ab = extrair_campo(row, ["Carimbo de data/hora", "Carimbo de Data/Hora", "Data/Hora"], "")
+            raw_ab = extrair_campo_flexivel(row, ["Carimbo de data/hora", "Carimbo de Data/Hora", "Data/Hora"], "")
             
             dt_ab_str = formatar_dt_exibicao(dt_ab, raw_ab)
 
@@ -748,7 +820,7 @@ with tab_gestao:
             idx_linha = df_calc[mask_num].index[0]
             linha_atual = df_raw.iloc[idx_linha]
 
-            st.info(f"Tratando Chamado #{num_chamado_sel}: {extrair_campo(linha_atual, ['Equipamento / Sistema / Local', 'Máquina ou Equipamento'])}")
+            st.info(f"Tratando Chamado #{num_chamado_sel}: {extrair_campo_flexivel(linha_atual, ['Equipamento / Sistema / Local', 'Máquina ou Equipamento', 'Equipamento'])}")
 
             with st.form("form_atualizacao"):
                 col_a, col_b = st.columns(2)
