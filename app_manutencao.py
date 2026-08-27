@@ -114,6 +114,13 @@ def get_sheet():
     client = get_gspread_client()
     return client.open_by_url(st.secrets["spreadsheet"]["url"]).worksheet("CHAMADOS")
 
+def encontrar_coluna(headers, candidatos):
+    for c in candidatos:
+        for idx, h in enumerate(headers):
+            if str(h).strip().lower() == str(c).strip().lower():
+                return idx, h
+    return None, None
+
 def dentro_do_expediente(dt, hora_inicio=None, hora_fim=None):
     if hora_inicio is None: hora_inicio = st.session_state.get("hora_inicio_turno", 8)
     if hora_fim is None: hora_fim = st.session_state.get("hora_fim_turno", 19)
@@ -241,10 +248,10 @@ def sanitizar_tecnico(r):
     tec_clean = tec_raw.strip().title()
     if tec_clean == "" or tec_clean.lower() in ["nan", "none", "não atribuído", "nao atribuido", "-", "null", "eric (histórico geral)", "eric (historico geral)"]:
         return "Eric"
-    if "Eric" in tec_clean:
-        return "Eric"
     if "Felipe" in tec_clean:
         return "Felipe"
+    if "Eric" in tec_clean:
+        return "Eric"
     return tec_clean
 
 @st.cache_data(ttl=30)
@@ -280,6 +287,21 @@ def load_and_process_data():
     df_calc["Meta_SLA_Horas"] = df_calc["Prioridade_Clean"].map(METAS_SLA).fillna(8.0)
     
     return df, df_calc
+
+def calcular_tempo_resolucao_concluido(row):
+    dt_ab = row.get("dt_abertura")
+    dt_conc = row.get("dt_conclusao")
+    if pd.notna(dt_ab) and pd.notna(dt_conc) and dt_conc >= dt_ab:
+        return calcular_horas_uteis(dt_ab, dt_conc)
+    
+    hh_raw = str(extrair_campo(row, ["Horas-Homem Aplicadas (ex: 1.5)", "Horas-Homem", "Horas Homem", "Horas"], "")).replace(",", ".").strip()
+    try:
+        v = float(hh_raw)
+        if v > 0: return v
+    except ValueError:
+        pass
+    
+    return 1.0
 
 def criar_grafico_pareto_limpo(df_input, coluna, titulo, top_n=10):
     if coluna not in df_input.columns or df_input[coluna].dropna().empty: return None
@@ -331,7 +353,6 @@ if not df_calc.empty:
     fuso_br = pytz.timezone("America/Sao_Paulo")
     agora_br = datetime.now(fuso_br)
     agora_naive_geral = pd.Timestamp(agora_br.replace(tzinfo=None))
-    DATA_CORTE = pd.Timestamp(2026, 8, 23, 0, 0, 0)
 
 tab_abertura, tab_dash, tab_gestao = st.tabs(["📌 Abrir Chamado", "📊 Dashboard & SLA", "⚙️ Gestão Operacional"])
 
@@ -370,22 +391,21 @@ with tab_abertura:
                 headers = [str(h).strip() for h in sheet.row_values(1)]
                 nova_linha = [""] * len(headers)
                 
-                def preencher(col, val):
-                    if col in headers: nova_linha[headers.index(col)] = val
+                def preencher(col_cands, val):
+                    idx, col_encontrada = encontrar_coluna(headers, col_cands)
+                    if idx is not None: nova_linha[idx] = val
 
                 proximo_num = len(df_calc) + 1
-                preencher("N*Chamado", proximo_num)
-                preencher("Nº Chamado", proximo_num)
-                preencher("Carimbo de data/hora", agora)
-                preencher("Endereço de e-mail", email)
-                preencher("Nome e Setor", nome_setor)
-                preencher("Área do chamado", area)
-                preencher("Equipamento / Sistema / Local", equipamento)
-                preencher("Máquina ou Equipamento", equipamento)
-                preencher("Qual é o problema?", problema)
-                preencher("Prioridade", prioridade)
-                preencher("Status", "Pendente")
-                preencher("Técnico Responsável", "Eric")
+                preencher(["N*Chamado", "Nº Chamado", "N° Chamado"], proximo_num)
+                preencher(["Carimbo de data/hora", "Carimbo de Data/Hora", "Data/Hora"], agora)
+                preencher(["Endereço de e-mail", "E-mail"], email)
+                preencher(["Nome e Setor", "Nome e Setor Solicitante"], nome_setor)
+                preencher(["Área do chamado", "Área"], area)
+                preencher(["Equipamento / Sistema / Local", "Máquina ou Equipamento"], equipamento)
+                preencher(["Qual é o problema?", "Descrição do problema"], problema)
+                preencher(["Prioridade", "Prioridade Sugerida"], prioridade)
+                preencher(["Status"], "Pendente")
+                preencher(["Técnico Responsável", "Técnico", "Tecnico"], "Eric")
 
                 sheet.append_row(nova_linha)
                 st.success(f"Chamado Nº {proximo_num} registrado!")
@@ -410,11 +430,9 @@ with tab_dash:
         em_turno = dentro_do_expediente(agora_naive_geral)
         status_expediente_str = "▶️ Ativo" if em_turno else "⏸️ Pausado (Fora do Expediente)"
 
-        df_concluidos = df_calc.dropna(subset=["dt_conclusao", "dt_abertura"]).copy()
+        df_concluidos = df_calc[df_calc["Status_Clean"] == "Concluído"].copy()
         if not df_concluidos.empty:
-            df_concluidos["Tempo_Resolucao_Horas"] = df_concluidos.apply(
-                lambda r: calcular_horas_uteis(r["dt_abertura"], r["dt_conclusao"]), axis=1
-            )
+            df_concluidos["Tempo_Resolucao_Horas"] = df_concluidos.apply(calcular_tempo_resolucao_concluido, axis=1)
             tmr_geral_num = df_concluidos["Tempo_Resolucao_Horas"].median() if not df_concluidos.empty else 0.0
         else:
             tmr_geral_num = 0.0
@@ -563,19 +581,11 @@ with tab_dash:
             
             dt_ab_str = formatar_dt_exibicao(dt_ab, raw_ab)
 
-            if pd.notna(dt_ab) and dt_ab < DATA_CORTE:
-                tmr_str = formatar_tempo_legivel((dt_conc - dt_ab).total_seconds() / 3600.0) if pd.notna(dt_conc) else "Legado"
-                sit_str = "✅ Cumprido (Legado)"
-                status_disp = "🟢 Concluído" if st_str == "Concluído" else ("🟣 Atuando" if st_str == "Atuando" else "🟡 Pendente")
-            elif st_str == "Concluído":
-                if pd.notna(dt_conc) and pd.notna(dt_ab):
-                    tempo_num = calcular_horas_uteis(dt_ab, dt_conc)
-                    sla_ok = tempo_num <= meta
-                    sit_str = "✅ Cumprido" if sla_ok else f"🔴 Estourado (+{formatar_tempo_legivel(tempo_num - meta)})"
-                    tmr_str = formatar_tempo_legivel(tempo_num)
-                else:
-                    tmr_str = "Concluído"
-                    sit_str = "✅ Concluído"
+            if st_str == "Concluído":
+                tempo_num = calcular_tempo_resolucao_concluido(row)
+                sla_ok = tempo_num <= meta
+                sit_str = "✅ Cumprido" if sla_ok else f"🔴 Estourado (+{formatar_tempo_legivel(tempo_num - meta)})"
+                tmr_str = formatar_tempo_legivel(tempo_num)
                 status_disp = "🟢 Concluído"
             else:
                 if pd.notna(dt_ab):
@@ -627,18 +637,16 @@ with tab_dash:
         st.markdown("---")
         st.markdown(f"##### 👷 Desempenho por Técnico & Prioridade (SLA por Nível)")
         
-        df_tec_full = df_calc.copy()
-        if not df_tec_full.empty:
-            df_concl_tec = df_tec_full[df_tec_full["Status_Clean"] == "Concluído"].dropna(subset=["dt_abertura", "dt_conclusao"]).copy()
+        if not df_calc.empty:
+            df_concl_tec = df_calc[df_calc["Status_Clean"] == "Concluído"].copy()
             if not df_concl_tec.empty:
-                df_concl_tec["Tempo_Horas"] = df_concl_tec.apply(lambda r: calcular_horas_uteis(r["dt_abertura"], r["dt_conclusao"]), axis=1)
+                df_concl_tec["Tempo_Horas"] = df_concl_tec.apply(calcular_tempo_resolucao_concluido, axis=1)
                 df_concl_tec["SLA_OK"] = df_concl_tec["Tempo_Horas"] <= df_concl_tec["Meta_SLA_Horas"]
             
             linhas_tec = []
             tecnicos_unicos = ["Eric", "Felipe"]
             
             for tec in tecnicos_unicos:
-                sub_tec_all = df_tec_full[df_tec_full["Tecnico_Clean"] == tec]
                 sub_tec_conc = df_concl_tec[df_concl_tec["Tecnico_Clean"] == tec] if not df_concl_tec.empty else pd.DataFrame()
                 
                 total_atend = len(sub_tec_conc)
@@ -766,17 +774,23 @@ with tab_gestao:
                     linha_excel = idx_linha + 2
                     updates_lote = []
                     
-                    if "Status" in headers:
-                        updates_lote.append({'range': rowcol_to_a1(linha_excel, headers.index("Status") + 1), 'values': [[novo_status]]})
-                    if "Técnico Responsável" in headers:
-                        updates_lote.append({'range': rowcol_to_a1(linha_excel, headers.index("Técnico Responsável") + 1), 'values': [[tecnico]]})
-                    if "Observação Interna" in headers:
-                        updates_lote.append({'range': rowcol_to_a1(linha_excel, headers.index("Observação Interna") + 1), 'values': [[obs_interna]]})
-                    if "Horas-Homem" in headers:
-                        updates_lote.append({'range': rowcol_to_a1(linha_excel, headers.index("Horas-Homem") + 1), 'values': [[horas_aplicadas]]})
-                    if novo_status == "Concluído" and "Data de conclusão" in headers:
+                    idx_st, col_st = encontrar_coluna(headers, ["Status", "Situação"])
+                    idx_tc, col_tc = encontrar_coluna(headers, ["Técnico Responsável", "Técnico", "Tecnico", "Responsável"])
+                    idx_ob, col_ob = encontrar_coluna(headers, ["Observação Interna", "Diagnóstico / Ação Executada", "Observações"])
+                    idx_hh, col_hh = encontrar_coluna(headers, ["Horas-Homem Aplicadas (ex: 1.5)", "Horas-Homem", "Horas Homem", "Horas"])
+                    idx_dt, col_dt = encontrar_coluna(headers, ["Data de conclusão", "Data de Conclusão", "Data Conclusão"])
+
+                    if idx_st is not None:
+                        updates_lote.append({'range': rowcol_to_a1(linha_excel, idx_st + 1), 'values': [[novo_status]]})
+                    if idx_tc is not None:
+                        updates_lote.append({'range': rowcol_to_a1(linha_excel, idx_tc + 1), 'values': [[tecnico]]})
+                    if idx_ob is not None:
+                        updates_lote.append({'range': rowcol_to_a1(linha_excel, idx_ob + 1), 'values': [[obs_interna]]})
+                    if idx_hh is not None:
+                        updates_lote.append({'range': rowcol_to_a1(linha_excel, idx_hh + 1), 'values': [[horas_aplicadas]]})
+                    if novo_status == "Concluído" and idx_dt is not None:
                         data_conc = datetime.now(pytz.timezone("America/Sao_Paulo")).strftime("%d/%m/%Y %H:%M:%S")
-                        updates_lote.append({'range': rowcol_to_a1(linha_excel, headers.index("Data de conclusão") + 1), 'values': [[data_conc]]})
+                        updates_lote.append({'range': rowcol_to_a1(linha_excel, idx_dt + 1), 'values': [[data_conc]]})
 
                     if updates_lote:
                         sheet.batch_update(updates_lote)
