@@ -1,5 +1,6 @@
 ﻿import streamlit as st
 import pandas as pd
+import numpy as np
 import gspread
 from gspread.utils import rowcol_to_a1
 from google.oauth2.service_account import Credentials
@@ -123,21 +124,26 @@ def dentro_do_expediente(dt, hora_inicio=None, hora_fim=None):
 def calcular_horas_uteis(dt_inicio, dt_fim, hora_inicio=None, hora_fim=None):
     if hora_inicio is None: hora_inicio = st.session_state.get("hora_inicio_turno", 8)
     if hora_fim is None: hora_fim = st.session_state.get("hora_fim_turno", 19)
-    if pd.isna(dt_inicio): return 0.0
-    if pd.isna(dt_fim):
-        dt_fim = datetime.now(pytz.timezone("America/Sao_Paulo")).replace(tzinfo=None)
+    
+    if pd.isna(dt_inicio) or pd.isna(dt_fim): return 0.0
     
     if hasattr(dt_inicio, 'tzinfo') and dt_inicio.tzinfo is not None:
         dt_inicio = dt_inicio.tz_convert(None)
     if hasattr(dt_fim, 'tzinfo') and dt_fim.tzinfo is not None:
         dt_fim = dt_fim.tz_convert(None)
         
+    dt_inicio = pd.Timestamp(dt_inicio)
+    dt_fim = pd.Timestamp(dt_fim)
+    
     if dt_inicio >= dt_fim: return 0.0
 
     total_segundos = 0.0
     curr = dt_inicio
+    max_dias = 1000
+    contador = 0
     
-    while curr < dt_fim:
+    while curr < dt_fim and contador < max_dias:
+        contador += 1
         if curr.weekday() < 5:
             inicio_turno = curr.replace(hour=hora_inicio, minute=0, second=0, microsecond=0)
             fim_turno = curr.replace(hour=hora_fim, minute=0, second=0, microsecond=0)
@@ -172,7 +178,7 @@ def parse_data_infalivel(val):
         h = int(m_br.group(4)) if m_br.group(4) is not None else 0
         mi = int(m_br.group(5)) if m_br.group(5) is not None else 0
         sec = int(m_br.group(6)) if m_br.group(6) is not None else 0
-        try: return datetime(y, m, d, h, mi, sec)
+        try: return pd.Timestamp(y, m, d, h, mi, sec)
         except ValueError: pass
 
     return pd.to_datetime(s, errors="coerce", dayfirst=True)
@@ -256,9 +262,12 @@ def load_and_process_data():
     df_calc["Prioridade_Clean"] = df_calc.apply(sanitizar_prioridade_universal, axis=1)
     df_calc["Status_Clean"] = df_calc.apply(obter_status_sanitizado, axis=1)
     
-    # Conversão rigorosa para tipo datetime64 do Pandas
-    df_calc["dt_abertura"] = pd.to_datetime(df_calc.apply(extrair_dt_abertura, axis=1), errors="coerce")
-    df_calc["dt_conclusao"] = pd.to_datetime(df_calc.apply(extrair_dt_conclusao, axis=1), errors="coerce")
+    # Garantia estrita de conversão para Serie Datetime64 do Pandas
+    list_ab = [extrair_dt_abertura(r) for _, r in df_calc.iterrows()]
+    list_conc = [extrair_dt_conclusao(r) for _, r in df_calc.iterrows()]
+    
+    df_calc["dt_abertura"] = pd.to_datetime(list_ab, errors="coerce")
+    df_calc["dt_conclusao"] = pd.to_datetime(list_conc, errors="coerce")
 
     METAS_SLA = {"Alta": 4.0, "Média": 8.0, "Baixa": 48.0}
     df_calc["Meta_SLA_Horas"] = df_calc["Prioridade_Clean"].map(METAS_SLA).fillna(8.0)
