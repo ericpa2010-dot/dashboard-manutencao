@@ -613,20 +613,28 @@ with tab_dash:
                 "Status": "🟣 Atuando" if row.get("Status_Clean") == "Atuando" else "🟡 Pendente",
                 "Saúde SLA": status_sla,
                 "Tempo Restante (Útil)": tempo_dec_str,
-                "Técnico": row.get("Tecnico_Clean", "Eric"),
-                "pct_num": pct_vida
+                "Técnico": row.get("Tecnico_Clean", "Eric")
             })
 
         if lista_ativos:
             df_ativos = pd.DataFrame(lista_ativos).sort_values("Nº", ascending=False)
             
             def colorir_linha_ativos(row):
-                pct = row["pct_num"]
-                if pct > 50.0: return ['background-color: #064E3B; color: #A7F3D0; font-weight: 700;'] * len(row)
-                elif pct > 20.0: return ['background-color: #78350F; color: #FDE68A; font-weight: 700;'] * len(row)
-                else: return ['background-color: #7F1D1D; color: #FECDD3; font-weight: 700;'] * len(row)
+                saude_str = str(row.get("Saúde SLA", ""))
+                if "Estourado" in saude_str:
+                    return ['background-color: #7F1D1D; color: #FECDD3; font-weight: 700;'] * len(row)
+                
+                m = re.search(r'(\d+)%', saude_str)
+                pct = int(m.group(1)) if m else 100
+                
+                if pct > 50:
+                    return ['background-color: #064E3B; color: #A7F3D0; font-weight: 700;'] * len(row)
+                elif pct > 20:
+                    return ['background-color: #78350F; color: #FDE68A; font-weight: 700;'] * len(row)
+                else:
+                    return ['background-color: #7F1D1D; color: #FECDD3; font-weight: 700;'] * len(row)
 
-            styled_ativos = df_ativos.style.apply(colorir_linha_ativos, axis=1).hide(subset=["pct_num"], axis="columns")
+            styled_ativos = df_ativos.style.apply(colorir_linha_ativos, axis=1)
             st.dataframe(styled_ativos, use_container_width=True, hide_index=True)
         else:
             st.success("✅ Nenhum chamado ativo pendente no momento.")
