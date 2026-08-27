@@ -226,8 +226,8 @@ def obter_status_sanitizado(r):
     
     st_raw = str(extrair_campo(r, ["Status"], "")).strip().upper()
     if "ATUAND" in st_raw or "ANDAMENTO" in st_raw: return "Atuando"
-    if "CONCLU" in st_raw: return "Concluído"
-    if "PENDENT" in st_raw or "ABERTO" in st_raw: return "Pendente"
+    if "CONCLU" in st_raw or "RESOLV" in st_raw or "FECHAD" in st_raw: return "Concluído"
+    if "PENDENT" in st_raw or "ABERTO" in st_raw or "NOVO" in st_raw: return "Pendente"
     return "Pendente"
 
 @st.cache_data(ttl=30)
@@ -249,20 +249,16 @@ def load_and_process_data():
     df_calc["Impacto_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["Qual é o impacto na operação?", "Impacto na operação", "Impacto"], "Não informado"), axis=1)
     df_calc["Area_Norm"] = df_calc.apply(lambda r: extrair_campo(r, ["Área do chamado", "Nome e Setor"], "Geral"), axis=1)
     
-    DATA_CORTE_TECNICO = pd.Timestamp(2026, 8, 23, 0, 0, 0)
-    def sanitizar_tecnico(r):
-        tec_raw = str(r.get("Técnico Responsável", "")).strip()
-        dt_ab = extrair_dt_abertura(r)
-        if tec_raw == "" or tec_raw.lower() in ["nan", "none", "não atribuído", "-"]:
-            if pd.notna(dt_ab) and dt_ab < DATA_CORTE_TECNICO: return "Eric (Histórico Geral)"
-            return "Não atribuído"
-        return tec_raw
+    def extrair_tecnico_robusto(r):
+        tec_val = extrair_campo(r, ["Técnico Responsável", "Técnico", "Tecnico", "Técnico Responsavel", "Responsável", "Técnico Atribuído", "Atribuído a"], "")
+        if tec_val == "" or tec_val.lower() in ["nan", "none", "não atribuído", "-"]:
+            return "Eric (Histórico Geral)"
+        return tec_val
 
-    df_calc["Tecnico_Clean"] = df_calc.apply(sanitizar_tecnico, axis=1)
+    df_calc["Tecnico_Clean"] = df_calc.apply(extrair_tecnico_robusto, axis=1)
     df_calc["Prioridade_Clean"] = df_calc.apply(sanitizar_prioridade_universal, axis=1)
     df_calc["Status_Clean"] = df_calc.apply(obter_status_sanitizado, axis=1)
     
-    # Garantia estrita de conversão para Serie Datetime64 do Pandas
     list_ab = [extrair_dt_abertura(r) for _, r in df_calc.iterrows()]
     list_conc = [extrair_dt_conclusao(r) for _, r in df_calc.iterrows()]
     
@@ -394,16 +390,30 @@ with tab_dash:
         opcao_periodo = st.selectbox("Filtro dos Indicadores", ["Todo o Histórico", "Últimos 90 dias", "Últimos 30 dias", "Este Mês", "Este Ano"], index=0)
 
     if not df_calc.empty:
+        # Filtro de Período para Estatísticas do Histórico
+        df_periodo = df_calc.copy()
+        if opcao_periodo != "Todo o Histórico":
+            limite_dt = None
+            if opcao_periodo == "Últimos 90 dias": limite_dt = agora_naive_geral - pd.Timedelta(days=90)
+            elif opcao_periodo == "Últimos 30 dias": limite_dt = agora_naive_geral - pd.Timedelta(days=30)
+            elif opcao_periodo == "Este Mês": limite_dt = agora_naive_geral.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            elif opcao_periodo == "Este Ano": limite_dt = agora_naive_geral.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+            
+            if limite_dt is not None:
+                # Mantém chamados do período E todos os chamados abertos atualmente
+                mask_periodo = (df_periodo["dt_abertura"] >= limite_dt) | (df_periodo["Status_Clean"].isin(["Pendente", "Atuando"]))
+                df_periodo = df_periodo[mask_periodo]
+
         status_abertos = ["Pendente", "Atuando"]
-        em_aberto = len(df_calc[df_calc["Status_Clean"].isin(status_abertos)])
-        total_chamados_geral = len(df_calc)
-        total_concluidos_geral = len(df_calc[df_calc["Status_Clean"] == "Concluído"])
-        taxa_conclusao_geral = (total_concluidos_geral / total_chamados_geral * 100) if total_chamados_geral > 0 else 100.0
+        em_aberto = len(df_calc[df_calc["Status_Clean"].isin(status_abertos)]) # backlog total ativo é global
+        total_chamados_periodo = len(df_periodo)
+        total_concluidos_periodo = len(df_periodo[df_periodo["Status_Clean"] == "Concluído"])
+        taxa_conclusao_periodo = (total_concluidos_periodo / total_chamados_periodo * 100) if total_chamados_periodo > 0 else 100.0
 
         em_turno = dentro_do_expediente(agora_naive_geral)
         status_expediente_str = "▶️ Ativo" if em_turno else "⏸️ Pausado (Fora do Expediente)"
 
-        df_concluidos = df_calc.dropna(subset=["dt_conclusao", "dt_abertura"]).copy()
+        df_concluidos = df_periodo.dropna(subset=["dt_conclusao", "dt_abertura"]).copy()
         if not df_concluidos.empty:
             df_concluidos["Tempo_Resolucao_Horas"] = df_concluidos.apply(
                 lambda r: calcular_horas_uteis(r["dt_abertura"], r["dt_conclusao"]), axis=1
@@ -413,9 +423,9 @@ with tab_dash:
             tmr_geral_num = 0.0
 
         c1, c2, c3, c4, c5 = st.columns(5)
-        c1.metric("Total Chamados", total_chamados_geral)
+        c1.metric("Total Chamados", total_chamados_periodo)
         c2.metric("Em Aberto", em_aberto)
-        c3.metric("Taxa Resolução", f"{taxa_conclusao_geral:.1f}%")
+        c3.metric("Taxa Resolução", f"{taxa_conclusao_periodo:.1f}%")
         c4.metric("TMR Mediano", formatar_tempo_legivel(tmr_geral_num))
         c5.metric("SLA / Expediente", status_expediente_str)
 
@@ -542,12 +552,12 @@ with tab_dash:
         st.markdown("---")
         col_hist_tit, col_hist_lim = st.columns([3, 1])
         with col_hist_tit:
-            st.markdown(f"##### 📋 Histórico Geral de Chamados & SLA (Total: {total_chamados_geral})")
+            st.markdown(f"##### 📋 Histórico Geral de Chamados & SLA (Total Exibido: {len(df_periodo)})")
         with col_hist_lim:
             limite_exibicao = st.selectbox("Exibir no histórico:", [50, 100, 200, "Todos"], index=0)
 
         lista_geral = []
-        for _, row in df_calc.iterrows():
+        for _, row in df_periodo.iterrows():
             st_str = str(row.get("Status_Clean", "Pendente"))
             dt_ab = row.get("dt_abertura")
             dt_conc = row.get("dt_conclusao")
@@ -618,23 +628,70 @@ with tab_dash:
             st.dataframe(styled_geral, use_container_width=True, hide_index=True)
 
         st.markdown("---")
-        st.markdown(f"##### 👷 Desempenho por Técnico")
-        if not df_concluidos.empty:
-            df_concluidos["Tecnico_Agrupado"] = df_concluidos["Tecnico_Clean"].apply(lambda x: "Eric" if x in ["Não atribuído", "Eric (Histórico Geral)"] else x)
-            tec_stats = df_concluidos.groupby("Tecnico_Agrupado").agg(
-                Atendidos=("Num_Chamado_Num", "count"),
-                TMR_Medio=("Tempo_Resolucao_Horas", "median")
-            ).reset_index()
-            tec_stats["TMR Médio (Útil)"] = tec_stats["TMR_Medio"].apply(formatar_tempo_legivel)
-            tec_exibicao = tec_stats[["Tecnico_Agrupado", "Atendidos", "TMR Médio (Útil)"]].rename(columns={"Tecnico_Agrupado": "Técnico Responsável"}).sort_values("Atendidos", ascending=False)
-            st.dataframe(tec_exibicao, use_container_width=True, hide_index=True)
+        st.markdown(f"##### 👷 Desempenho por Técnico & Prioridade (SLA por Nível)")
+        
+        df_tec_full = df_calc.copy()
+        if not df_tec_full.empty:
+            df_concl_tec = df_tec_full[df_tec_full["Status_Clean"] == "Concluído"].dropna(subset=["dt_abertura", "dt_conclusao"]).copy()
+            if not df_concl_tec.empty:
+                df_concl_tec["Tempo_Horas"] = df_concl_tec.apply(lambda r: calcular_horas_uteis(r["dt_abertura"], r["dt_conclusao"]), axis=1)
+                df_concl_tec["SLA_OK"] = df_concl_tec["Tempo_Horas"] <= df_concl_tec["Meta_SLA_Horas"]
+            
+            linhas_tec = []
+            tecnicos_unicos = sorted(list(set(df_tec_full["Tecnico_Clean"].dropna().unique())))
+            
+            for tec in tecnicos_unicos:
+                sub_tec_all = df_tec_full[df_tec_full["Tecnico_Clean"] == tec]
+                sub_tec_conc = df_concl_tec[df_concl_tec["Tecnico_Clean"] == tec] if not df_concl_tec.empty else pd.DataFrame()
+                
+                total_atend = len(sub_tec_conc)
+                tmr_geral = formatar_tempo_legivel(sub_tec_conc["Tempo_Horas"].median()) if total_atend > 0 else "-"
+                sla_geral_pct = f"{(sub_tec_conc['SLA_OK'].sum() / total_atend * 100):.1f}%" if total_atend > 0 else "-"
+
+                # Prioridade Alta
+                conc_alta = sub_tec_conc[sub_tec_conc["Prioridade_Clean"] == "Alta"] if not sub_tec_conc.empty else pd.DataFrame()
+                qtd_alta = len(conc_alta)
+                tmr_alta = formatar_tempo_legivel(conc_alta["Tempo_Horas"].median()) if qtd_alta > 0 else "-"
+                sla_alta = f"{(conc_alta['SLA_OK'].sum() / qtd_alta * 100):.1f}%" if qtd_alta > 0 else "-"
+
+                # Prioridade Média
+                conc_med = sub_tec_conc[sub_tec_conc["Prioridade_Clean"] == "Média"] if not sub_tec_conc.empty else pd.DataFrame()
+                qtd_med = len(conc_med)
+                tmr_med = formatar_tempo_legivel(conc_med["Tempo_Horas"].median()) if qtd_med > 0 else "-"
+                sla_med = f"{(conc_med['SLA_OK'].sum() / qtd_med * 100):.1f}%" if qtd_med > 0 else "-"
+
+                # Prioridade Baixa
+                conc_baix = sub_tec_conc[sub_tec_conc["Prioridade_Clean"] == "Baixa"] if not sub_tec_conc.empty else pd.DataFrame()
+                qtd_baix = len(conc_baix)
+                tmr_baix = formatar_tempo_legivel(conc_baix["Tempo_Horas"].median()) if qtd_baix > 0 else "-"
+                sla_baix = f"{(conc_baix['SLA_OK'].sum() / qtd_baix * 100):.1f}%" if qtd_baix > 0 else "-"
+
+                linhas_tec.append({
+                    "Técnico Responsável": tec,
+                    "Total Concluídos": total_atend,
+                    "TMR Geral (Útil)": tmr_geral,
+                    "SLA Geral (%)": sla_geral_pct,
+                    "Qtd Alta": qtd_alta,
+                    "TMR Alta": tmr_alta,
+                    "SLA Alta": sla_alta,
+                    "Qtd Média": qtd_med,
+                    "TMR Média": tmr_med,
+                    "SLA Média": sla_med,
+                    "Qtd Baixa": qtd_baix,
+                    "TMR Baixa": tmr_baix,
+                    "SLA Baixa": sla_baix
+                })
+
+            if linhas_tec:
+                df_tec_exibicao = pd.DataFrame(linhas_tec)
+                st.dataframe(df_tec_exibicao, use_container_width=True, hide_index=True)
 
         st.markdown("---")
-        fig_equip = criar_grafico_pareto_limpo(df_calc, "Equipamento_Norm", "Top Equipamentos Críticos", top_n=10)
+        fig_equip = criar_grafico_pareto_limpo(df_periodo, "Equipamento_Norm", "Top Equipamentos Críticos", top_n=10)
         if fig_equip: st.plotly_chart(fig_equip, use_container_width=True)
 
         st.markdown("---")
-        fig_setor = criar_grafico_pareto_limpo(df_calc, "Area_Norm", "Top Setores Solicitantes", top_n=10)
+        fig_setor = criar_grafico_pareto_limpo(df_periodo, "Area_Norm", "Top Setores Solicitantes", top_n=10)
         if fig_setor: st.plotly_chart(fig_setor, use_container_width=True)
 
 # ABA 3: GESTÃO OPERACIONAL DE CHAMADOS
