@@ -1,4 +1,4 @@
-import streamlit as st
+﻿import streamlit as st
 import pandas as pd
 import numpy as np
 import gspread
@@ -396,32 +396,66 @@ if not df_calc.empty:
 
 tab_abertura, tab_dash, tab_gestao = st.tabs(["📌 Abrir Chamado", "📊 Dashboard & SLA", "⚙️ Gestão Operacional"])
 
-# ABA 1: ABERTURA DE CHAMADO
+# ABA 1: ABERTURA DE CHAMADO (CAMPOS OBRIGATÓRIOS E NOME DA PESSOA EXIGIDO)
 with tab_abertura:
     st.title("📌 Abertura de Chamado")
+    st.markdown("Preencha todos os campos obrigatórios abaixo para acionar a equipe de manutenção.")
+    
+    # Lista de equipamentos conhecidos para sugestão
+    equipamentos_conhecidos = []
+    if not df_calc.empty and "Equipamento_Norm" in df_calc.columns:
+        equipamentos_conhecidos = sorted([eq for eq in df_calc["Equipamento_Norm"].dropna().unique() if eq not in ["Não informado", "Sem descrição", "Geral", ""]])
+    
+    opcoes_equipamento = ["-- Selecione ou digite outro abaixo --"] + equipamentos_conhecidos + ["Outro equipamento não listado"]
+
     with st.form("form_abertura", clear_on_submit=True):
         col1, col2 = st.columns(2)
         with col1:
-            nome_setor = st.text_input("Nome e Setor Solicitante *", placeholder="Ex: Guilherme (Surfaçagem)")
-            email = st.text_input("E-mail para Notificação")
-            area = st.selectbox("Área do Chamado *", ["Surfaçagem", "AR", "Montagem", "Estoque", "Expedição", "Atendimento", "TI", "Diretoria", "Geral"])
-            equipamento = st.text_input("Equipamento / Sistema / Local *", placeholder="Ex: Satisloh SL-501")
+            nome_solicitante = st.text_input("Seu Nome Completo (Pessoa) *", placeholder="Ex: Carlos Silva (digite seu nome pessoal)")
+            area = st.selectbox("Seu Setor / Área *", ["Surfaçagem", "Coloração", "AR", "Montagem", "Estoque", "Expedição", "Atendimento", "TI", "Diretoria", "Geral"])
+            
+            eq_selecionado = st.selectbox("Equipamento / Máquina Frequente *", opcoes_equipamento)
+            if eq_selecionado in ["-- Selecione ou digite outro abaixo --", "Outro equipamento não listado"]:
+                equipamento_digitado = st.text_input("Digite o Nome da Máquina / Equipamento *", placeholder="Ex: Satisloh SL-501, Polidora 1, etc.")
+                equipamento_final = equipamento_digitado
+            else:
+                equipamento_final = eq_selecionado
+                
         with col2:
-            impacto = st.selectbox("Impacto na Operação", ["Parada total", "Parada parcial", "Sem impacto"])
-            prioridade = st.selectbox("Prioridade Sugerida", ["Alta", "Média", "Baixa"])
-            info_adicional = st.text_input("Link de Foto/Anexo (opcional)")
+            email = st.text_input("E-mail para Notificação (Opcional)")
+            impacto = st.selectbox("Impacto na Operação *", ["Parada total", "Parada parcial", "Sem impacto"])
+            prioridade = st.selectbox("Prioridade Sugerida *", ["Alta", "Média", "Baixa"])
+            info_adicional = st.text_input("Link de Foto / Vídeo / Anexo (Opcional)")
 
-        problema = st.text_input("Qual é o problema? *", placeholder="Resumo claro do problema")
-        observado = st.text_area("O que foi observado?", placeholder="Detalhes do comportamento do equipamento")
-        testado = st.text_area("O que já foi feito/testado?", placeholder="Ações iniciais tentadas antes do chamado")
-        submitted = st.form_submit_button("Enviar Chamado")
+        problema = st.text_input("Qual é o problema? (Resumo claro do defeito) *", placeholder="Ex: Máquina travou com erro no sensor de vácuo")
+        observado = st.text_area("O que foi observado durante a falha? *", placeholder="Ex: Ruído anormal no motor e lâmpada vermelha de alarme piscando")
+        testado = st.text_area("O que já foi feito/testado antes de abrir o chamado?", placeholder="Ex: Reiniciamos o disjuntor principal, mas o erro persistiu")
+        
+        submitted = st.form_submit_button("🚀 Registrar Chamado de Manutenção")
 
         if submitted:
             campos_faltantes = []
-            if not nome_setor or not nome_setor.strip(): campos_faltantes.append("Nome e Setor Solicitante")
-            if not area or not area.strip(): campos_faltantes.append("Área do Chamado")
-            if not equipamento or not equipamento.strip(): campos_faltantes.append("Equipamento / Sistema / Local")
-            if not problema or not problema.strip(): campos_faltantes.append("Qual é o problema?")
+            
+            # Validação do Nome da Pessoa (bloqueia se colocar apenas o setor)
+            nome_clean = nome_solicitante.strip()
+            setores_bloqueados = ["surfaçagem", "surfacagem", "coloração", "coloracao", "ar", "montagem", "estoque", "expedição", "expedicao", "ti", "diretoria", "geral"]
+            
+            if not nome_clean or len(nome_clean) < 3:
+                campos_faltantes.append("Seu Nome Completo (informe seu nome de pessoa, não deixe em branco)")
+            elif nome_clean.lower() in setores_bloqueados:
+                campos_faltantes.append("Seu Nome Completo (você digitou apenas o nome do setor; por favor, informe o seu nome)")
+
+            if not area or not area.strip():
+                campos_faltantes.append("Seu Setor / Área")
+                
+            if not equipamento_final or not equipamento_final.strip():
+                campos_faltantes.append("Equipamento / Máquina / Local")
+                
+            if not problema or not problema.strip():
+                campos_faltantes.append("Qual é o problema? (Resumo)")
+                
+            if not observado or not observado.strip():
+                campos_faltantes.append("O que foi observado durante a falha?")
 
             if campos_faltantes:
                 st.error("🛑 **Abertura Bloqueada!** Preencha os campos obrigatórios:\n\n" + "\n".join([f"• **{campo}**" for campo in campos_faltantes]))
@@ -436,19 +470,23 @@ with tab_abertura:
                     if idx is not None: nova_linha[idx] = val
 
                 proximo_num = len(df_calc) + 1
+                
+                # Salva o Solicitante com Nome e Setor juntos
+                solicitante_formatado = f"{nome_clean} ({area})"
+                
                 preencher(["N*Chamado", "Nº Chamado", "N° Chamado"], proximo_num)
                 preencher(["Carimbo de data/hora", "Carimbo de Data/Hora", "Data/Hora"], agora)
                 preencher(["Endereço de e-mail", "E-mail"], email)
-                preencher(["Nome e Setor", "Nome e Setor Solicitante"], nome_setor)
+                preencher(["Nome e Setor", "Nome e Setor Solicitante"], solicitante_formatado)
                 preencher(["Área do chamado", "Área"], area)
-                preencher(["Equipamento / Sistema / Local", "Máquina ou Equipamento"], equipamento)
-                preencher(["Qual é o problema?", "Descrição do problema"], problema)
+                preencher(["Equipamento / Sistema / Local", "Máquina ou Equipamento"], equipamento_final.strip())
+                preencher(["Qual é o problema?", "Descrição do problema"], problema.strip())
                 preencher(["Prioridade", "Prioridade Sugerida"], prioridade)
                 preencher(["Status"], "Pendente")
                 preencher(["Técnico Responsável", "Técnico", "Tecnico"], "Eric")
 
                 sheet.append_row(nova_linha)
-                st.success(f"Chamado Nº {proximo_num} registrado!")
+                st.success(f"✅ **Chamado Nº {proximo_num} registrado com sucesso para {nome_clean}!** A equipe técnica foi notificada.")
                 st.cache_data.clear()
                 st.rerun()
 
