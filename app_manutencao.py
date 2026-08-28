@@ -15,7 +15,7 @@ import plotly.graph_objects as go
 # Configuração da página
 st.set_page_config(page_title="Gestão de Manutenção", page_icon="🛠️", layout="wide")
 
-# CSS: Design System Escuro Futurista Idêntico ao Preview
+# CSS: Design System Escuro Futurista
 st.markdown("""
    <style>
    #MainMenu {visibility: hidden;}
@@ -414,11 +414,10 @@ if not df_calc.empty:
 tab_abertura, tab_dash, tab_gestao = st.tabs(["📌 Abrir Chamado", "📊 Dashboard & SLA", "⚙️ Gestão Operacional"])
 
 # ==========================================
-# ABA 1: ABERTURA DE CHAMADO (LAYOUT VISUAL DO PREVIEW)
+# ABA 1: ABERTURA DE CHAMADO (MANUAL 1º LUGAR, VOZ 2º LUGAR)
 # ==========================================
 with tab_abertura:
     
-    # Header estilizado
     st.markdown("""
         <div style="border-bottom: 1px solid #334155; padding-bottom: 12px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
             <div>
@@ -431,184 +430,27 @@ with tab_abertura:
         </div>
     """, unsafe_allow_html=True)
 
-    # 2 Cards Visuais de Escolha (Voz vs Manual)
-    col_card_v, col_card_m = st.columns(2)
-    
-    with col_card_v:
-        btn_modo_voz = st.button("🎙️ Abertura por Voz (Áudio IA)", use_container_width=True)
-    with col_card_m:
-        btn_modo_manual = st.button("✍️ Escrita Manual Completa", use_container_width=True)
-
     if "modo_selecionado" not in st.session_state:
         st.session_state["modo_selecionado"] = "manual"
 
-    if btn_modo_voz:
-        st.session_state["modo_selecionado"] = "voz"
+    col_card_m, col_card_v = st.columns(2)
+    with col_card_m:
+        btn_modo_manual = st.button("✍️ Escrita Manual Completa (Recomendado)", use_container_width=True)
+    with col_card_v:
+        btn_modo_voz = st.button("🎙️ Abertura Rápida por Voz (Áudio IA)", use_container_width=True)
+
     if btn_modo_manual:
         st.session_state["modo_selecionado"] = "manual"
+    if btn_modo_voz:
+        st.session_state["modo_selecionado"] = "voz"
 
     st.markdown("---")
 
-    # MODO 1: GRAVADOR DE VOZ NATIVO (HTML5 Web Speech API + Extração)
-    if st.session_state["modo_selecionado"] == "voz":
+    # MODO 1 (PADRÃO / 1º LUGAR): ESCRITA MANUAL COMPLETA
+    if st.session_state["modo_selecionado"] == "manual":
         st.markdown("""
-            <div style="background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%); border: 1px solid #334155; border-radius: 16px; padding: 20px; text-align: center; margin-bottom: 20px;">
-                <h4 style="color: #F8FAFC; margin: 0 0 6px 0;">🎙️ Gravador de Áudio & Reconhecimento de Voz</h4>
-                <p style="color: #94A3B8; font-size: 0.8rem; margin: 0;">Clique no microfone abaixo e fale: <b>Seu Nome, Setor, Máquina e o Defeito</b>.</p>
-            </div>
-        """, unsafe_allow_html=True)
-
-        # Microfone HTML5 nativo do navegador
-        html_mic = """
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <style>
-            body { margin: 0; background: transparent; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-            .mic-btn { width: 70px; height: 70px; border-radius: 50%; background: #38BDF8; color: #0F172A; font-size: 28px; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 15px rgba(56, 189, 248, 0.4); transition: all 0.2s; }
-            .mic-btn:hover { background: #7DD3FC; transform: scale(1.05); }
-            .recording { background: #EF4444 !important; color: white !important; animation: pulse 1.5s infinite; }
-            @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); } 70% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
-            #status-text { color: #38BDF8; font-size: 13px; font-weight: 700; margin-top: 10px; }
-            #transcript-box { background: #1E293B; border: 1px solid #334155; color: #F8FAFC; border-radius: 8px; padding: 10px; font-size: 13px; width: 90%; max-width: 500px; margin-top: 12px; min-height: 40px; text-align: left; }
-          </style>
-        </head>
-        <body>
-          <button id="mic" class="mic-btn" onclick="toggleRecord()">🎙️</button>
-          <div id="status-text">Clique no microfone para falar</div>
-          <div id="transcript-box"><i>O que você falar aparecerá aqui em tempo real...</i></div>
-
-          <script>
-            let rec;
-            let isRecording = false;
-            if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-              const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
-              rec = new SpeechRec();
-              rec.lang = 'pt-BR';
-              rec.continuous = false;
-              rec.interimResults = true;
-
-              rec.onstart = function() {
-                isRecording = true;
-                document.getElementById('mic').classList.add('recording');
-                document.getElementById('status-text').innerHTML = '<span style="color: #EF4444;">🔴 Ouvindo... Fale agora!</span>';
-              };
-
-              rec.onresult = function(e) {
-                let text = '';
-                for (let i = e.resultIndex; i < e.results.length; ++i) {
-                  text += e.results[i][0].transcript;
-                }
-                document.getElementById('transcript-box').innerText = text;
-              };
-
-              rec.onend = function() {
-                isRecording = false;
-                document.getElementById('mic').classList.remove('recording');
-                document.getElementById('status-text').innerText = '✅ Fala capturada! Copie ou ajuste abaixo para confirmar.';
-              };
-
-              rec.onerror = function() {
-                isRecording = false;
-                document.getElementById('mic').classList.remove('recording');
-                document.getElementById('status-text').innerText = 'Microfone finalizado.';
-              };
-            }
-
-            function toggleRecord() {
-              if (!rec) {
-                alert('Seu navegador não liberou o microfone. Use a caixa de texto abaixo.');
-                return;
-              }
-              if (isRecording) { rec.stop(); } else { rec.start(); }
-            }
-          </script>
-        </body>
-        </html>
-        """
-        components.html(html_mic, height=200)
-
-        st.markdown("##### 📝 Confirmar Relato de Voz")
-        texto_voz_input = st.text_area(
-            "Relato Capturado (você pode editar ou complementar):",
-            placeholder="Ex: Sou o Carlos da Coloração, a Polidora 2 travou a manta e está parada total.",
-            height=80
-        )
-
-        col_ex1, col_ex2 = st.columns(2)
-        with col_ex1:
-            if st.button("💬 Exemplo 1: Polidora 2 Parada"):
-                texto_voz_input = "Sou o Carlos da Coloração, a Polidora 2 travou a manta e está parada total."
-        with col_ex2:
-            if st.button("💬 Exemplo 2: Torno SL-501 com Ruído"):
-                texto_voz_input = "Aqui é o Marcos da Surfaçagem, o torno SL-501 está com ruído estranho no eixo mas continua rodando."
-
-        if st.button("🚀 Processar e Registrar Chamado por Voz"):
-            if not texto_voz_input or len(texto_voz_input.strip()) < 8:
-                st.error("🛑 Forneça o relato com seu nome, máquina e o defeito.")
-            else:
-                t = texto_voz_input.lower()
-                nome_auto = "Operador"
-                if "carlos" in t: nome_auto = "Carlos Silva"
-                elif "marcos" in t: nome_auto = "Marcos Oliveira"
-                elif "guilherme" in t: nome_auto = "Guilherme Santos"
-                elif "eric" in t: nome_auto = "Eric"
-
-                setor_auto = "Geral"
-                if any(k in t for k in ["surfaçagem", "surfacagem"]): setor_auto = "Surfaçagem"
-                elif any(k in t for k in ["coloração", "coloracao"]): setor_auto = "Coloração"
-                elif "montagem" in t: setor_auto = "Montagem"
-                elif "ar" in t: setor_auto = "AR"
-
-                equip_auto = "Máquina"
-                if "polidora 1" in t: equip_auto = "Polidora 1"
-                elif "polidora 2" in t: equip_auto = "Polidora 2"
-                elif "polidora 3" in t: equip_auto = "Polidora 3"
-                elif any(k in t for k in ["sl-501", "sl501", "satisloh"]): equip_auto = "Satisloh SL-501"
-
-                if any(k in t for k in ["parada total", "parou total", "travou total", "parada"]):
-                    prio_auto = "Alta"
-                    impacto_auto = "Parada total"
-                elif any(k in t for k in ["lentid", "falha", "ruido", "barulho", "vazamento"]):
-                    prio_auto = "Média"
-                    impacto_auto = "Parada parcial"
-                else:
-                    prio_auto = "Baixa"
-                    impacto_auto = "Sem impacto"
-
-                sheet = get_sheet()
-                agora = datetime.now(pytz.timezone("America/Sao_Paulo")).strftime("%d/%m/%Y %H:%M:%S")
-                headers = [str(h).strip() for h in sheet.row_values(1)]
-                nova_linha = [""] * len(headers)
-                
-                def preencher(col_cands, val):
-                    idx, col_encontrada = encontrar_coluna(headers, col_cands)
-                    if idx is not None: nova_linha[idx] = val
-
-                proximo_num = len(df_calc) + 1
-                solicitante_str = f"{nome_auto} ({setor_auto})"
-                
-                preencher(["N*Chamado", "Nº Chamado", "N° Chamado"], proximo_num)
-                preencher(["Carimbo de data/hora", "Carimbo de Data/Hora", "Data/Hora"], agora)
-                preencher(["Nome e Setor", "Nome e Setor Solicitante"], solicitante_str)
-                preencher(["Área do chamado", "Área"], setor_auto)
-                preencher(["Equipamento / Sistema / Local", "Máquina ou Equipamento"], equip_auto)
-                preencher(["Qual é o problema?", "Descrição do problema"], texto_voz_input.strip())
-                preencher(["Impacto na operação", "Impacto"], impacto_auto)
-                preencher(["Prioridade", "Prioridade Sugerida"], prio_auto)
-                preencher(["Status"], "Pendente")
-                preencher(["Técnico Responsável", "Técnico", "Tecnico"], "Eric")
-
-                sheet.append_row(nova_linha)
-                st.success(f"✅ **Chamado Nº {proximo_num} registrado com sucesso para {nome_auto}!** (SLA: {prio_auto} | Máquina: {equip_auto})")
-                st.cache_data.clear()
-                st.rerun()
-
-    # MODO 2: FORMULÁRIO MANUAL COM DESIGN IDÊNTICO AO PREVIEW
-    else:
-        st.markdown("""
-            <div style="background-color: #1E293B; border: 1px solid #334155; border-radius: 16px; padding: 24px; margin-bottom: 20px;">
-                <div style="color: #38BDF8; font-size: 0.8rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px;">
+            <div style="background-color: #1E293B; border: 1px solid #334155; border-radius: 16px; padding: 16px 20px; margin-bottom: 16px;">
+                <div style="color: #38BDF8; font-size: 0.8rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em;">
                     1. Identificação do Solicitante
                 </div>
             </div>
@@ -651,7 +493,6 @@ with tab_abertura:
                 </div>
             """, unsafe_allow_html=True)
 
-            # Os 3 Cards Explicativos de Situação
             st.markdown("""
                 <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px;">
                     <div style="background-color: #0F172A; border: 2px solid #EF4444; border-radius: 10px; padding: 12px;">
@@ -755,6 +596,162 @@ with tab_abertura:
                     st.success(f"✅ **Chamado Nº {proximo_num} registrado com sucesso para {nome_clean}!** (SLA: {prio_final})")
                     st.cache_data.clear()
                     st.rerun()
+
+    # MODO 2: ABERTURA POR VOZ (INTEGRADO & COM PROCESSAMENTO DIRETO)
+    else:
+        st.markdown("""
+            <div style="background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%); border: 1px solid #334155; border-radius: 16px; padding: 20px; text-align: center; margin-bottom: 20px;">
+                <h4 style="color: #F8FAFC; margin: 0 0 6px 0;">🎙️ Gravador de Áudio & Reconhecimento de Voz</h4>
+                <p style="color: #94A3B8; font-size: 0.8rem; margin: 0;">Clique no microfone para falar seu relato e a IA registrará o chamado.</p>
+            </div>
+        """, unsafe_allow_html=True)
+
+        # Microfone HTML5 nativo com transcrição
+        html_mic_direct = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body { margin: 0; background: transparent; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+            .mic-btn { width: 70px; height: 70px; border-radius: 50%; background: #38BDF8; color: #0F172A; font-size: 28px; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 15px rgba(56, 189, 248, 0.4); transition: all 0.2s; }
+            .mic-btn:hover { background: #7DD3FC; transform: scale(1.05); }
+            .recording { background: #EF4444 !important; color: white !important; animation: pulse 1.5s infinite; }
+            @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); } 70% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
+            #status-text { color: #38BDF8; font-size: 13px; font-weight: 700; margin-top: 10px; }
+            #transcript-box { background: #1E293B; border: 1px solid #38BDF8; color: #F8FAFC; border-radius: 8px; padding: 12px; font-size: 14px; width: 90%; max-width: 500px; margin-top: 12px; min-height: 45px; text-align: left; line-height: 1.4; }
+          </style>
+        </head>
+        <body>
+          <button id="mic" class="mic-btn" onclick="toggleRecord()">🎙️</button>
+          <div id="status-text">Clique no microfone para falar</div>
+          <div id="transcript-box"><i>Sua fala aparecerá aqui em tempo real...</i></div>
+
+          <script>
+            let rec;
+            let isRecording = false;
+            if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+              const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+              rec = new SpeechRec();
+              rec.lang = 'pt-BR';
+              rec.continuous = false;
+              rec.interimResults = true;
+
+              rec.onstart = function() {
+                isRecording = true;
+                document.getElementById('mic').classList.add('recording');
+                document.getElementById('status-text').innerHTML = '<span style="color: #EF4444;">🔴 Gravando... Fale seu nome, setor, máquina e defeito!</span>';
+              };
+
+              rec.onresult = function(e) {
+                let text = '';
+                for (let i = e.resultIndex; i < e.results.length; ++i) {
+                  text += e.results[i][0].transcript;
+                }
+                document.getElementById('transcript-box').innerText = text;
+              };
+
+              rec.onend = function() {
+                isRecording = false;
+                document.getElementById('mic').classList.remove('recording');
+                document.getElementById('status-text').innerText = '✅ Fala concluída! Copie ou confirme no formulário abaixo.';
+              };
+
+              rec.onerror = function() {
+                isRecording = false;
+                document.getElementById('mic').classList.remove('recording');
+                document.getElementById('status-text').innerText = 'Gravação finalizada.';
+              };
+            }
+
+            function toggleRecord() {
+              if (!rec) {
+                alert('Microfone não suportado pelo navegador.');
+                return;
+              }
+              if (isRecording) { rec.stop(); } else { rec.start(); }
+            }
+          </script>
+        </body>
+        </html>
+        """
+        components.html(html_mic_direct, height=190)
+
+        st.markdown("##### 📝 Confirmação do Chamado por Voz")
+        texto_voz_input = st.text_area(
+            "Digite ou confirme o relato capturado pelo microfone:",
+            placeholder="Ex: Sou o Carlos da Coloração, a Polidora 2 quebrou a manta e a máquina está parada total.",
+            height=90
+        )
+
+        col_ex1, col_ex2 = st.columns(2)
+        with col_ex1:
+            if st.button("💬 Simular: Carlos (Coloração) - Polidora 2 Parada"):
+                texto_voz_input = "Sou o Carlos da Coloração, a Polidora 2 travou a manta e está parada total."
+        with col_ex2:
+            if st.button("💬 Simular: Marcos (Surfaçagem) - SL-501 com Ruído"):
+                texto_voz_input = "Aqui é o Marcos da Surfaçagem, o torno SL-501 está com ruído estranho no eixo mas continua rodando."
+
+        if st.button("🚀 Processar e Registrar Chamado por Voz", key="btn_submit_voz"):
+            if not texto_voz_input or len(texto_voz_input.strip()) < 6:
+                st.error("🛑 Por favor, forneça o texto da fala com seu nome, máquina e defeito.")
+            else:
+                t = texto_voz_input.lower()
+                nome_auto = "Operador"
+                if "carlos" in t: nome_auto = "Carlos Silva"
+                elif "marcos" in t: nome_auto = "Marcos Oliveira"
+                elif "guilherme" in t: nome_auto = "Guilherme Santos"
+                elif "eric" in t: nome_auto = "Eric"
+                elif "felipe" in t: nome_auto = "Felipe"
+
+                setor_auto = "Geral"
+                if any(k in t for k in ["surfaçagem", "surfacagem"]): setor_auto = "Surfaçagem"
+                elif any(k in t for k in ["coloração", "coloracao"]): setor_auto = "Coloração"
+                elif "montagem" in t: setor_auto = "Montagem"
+                elif "ar" in t: setor_auto = "AR"
+
+                equip_auto = "Equipamento"
+                if "polidora 1" in t: equip_auto = "Polidora 1"
+                elif "polidora 2" in t: equip_auto = "Polidora 2"
+                elif "polidora 3" in t: equip_auto = "Polidora 3"
+                elif any(k in t for k in ["sl-501", "sl501", "satisloh"]): equip_auto = "Satisloh SL-501"
+
+                if any(k in t for k in ["parada total", "parou total", "travou total", "parada"]):
+                    prio_auto = "Alta"
+                    impacto_auto = "Parada total"
+                elif any(k in t for k in ["lentid", "falha", "ruido", "barulho", "vazamento"]):
+                    prio_auto = "Média"
+                    impacto_auto = "Parada parcial"
+                else:
+                    prio_auto = "Baixa"
+                    impacto_auto = "Sem impacto"
+
+                sheet = get_sheet()
+                agora = datetime.now(pytz.timezone("America/Sao_Paulo")).strftime("%d/%m/%Y %H:%M:%S")
+                headers = [str(h).strip() for h in sheet.row_values(1)]
+                nova_linha = [""] * len(headers)
+                
+                def preencher(col_cands, val):
+                    idx, col_encontrada = encontrar_coluna(headers, col_cands)
+                    if idx is not None: nova_linha[idx] = val
+
+                proximo_num = len(df_calc) + 1
+                solicitante_str = f"{nome_auto} ({setor_auto})"
+                
+                preencher(["N*Chamado", "Nº Chamado", "N° Chamado"], proximo_num)
+                preencher(["Carimbo de data/hora", "Carimbo de Data/Hora", "Data/Hora"], agora)
+                preencher(["Nome e Setor", "Nome e Setor Solicitante"], solicitante_str)
+                preencher(["Área do chamado", "Área"], setor_auto)
+                preencher(["Equipamento / Sistema / Local", "Máquina ou Equipamento"], equip_auto)
+                preencher(["Qual é o problema?", "Descrição do problema"], texto_voz_input.strip())
+                preencher(["Impacto na operação", "Impacto"], impacto_auto)
+                preencher(["Prioridade", "Prioridade Sugerida"], prio_auto)
+                preencher(["Status"], "Pendente")
+                preencher(["Técnico Responsável", "Técnico", "Tecnico"], "Eric")
+
+                sheet.append_row(nova_linha)
+                st.success(f"✅ **Chamado Nº {proximo_num} registrado com sucesso para {nome_auto}!** (Prioridade: {prio_auto} | Máquina: {equip_auto})")
+                st.cache_data.clear()
+                st.rerun()
 
 # ==========================================
 # ABA 2: DASHBOARD & SLA COMPLETO
