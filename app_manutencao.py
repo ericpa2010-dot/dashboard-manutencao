@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import numpy as np
 import gspread
@@ -14,7 +15,7 @@ import plotly.graph_objects as go
 # Configuração da página
 st.set_page_config(page_title="Gestão de Manutenção", page_icon="🛠️", layout="wide")
 
-# CSS: Design System Escuro Futurista
+# CSS: Design System Escuro Futurista Idêntico ao Preview
 st.markdown("""
    <style>
    #MainMenu {visibility: hidden;}
@@ -76,6 +77,22 @@ st.markdown("""
        color: #F8FAFC !important;
        border: 1px solid #334155 !important;
        border-radius: 8px !important;
+   }
+
+   /* Botões Principais */
+   div.stButton > button {
+       background-color: #38BDF8 !important;
+       color: #0F172A !important;
+       font-weight: 800 !important;
+       border-radius: 8px !important;
+       padding: 10px 20px !important;
+       border: none !important;
+       transition: all 0.2s ease;
+   }
+   div.stButton > button:hover {
+       background-color: #7DD3FC !important;
+       color: #0F172A !important;
+       transform: scale(1.01);
    }
 
    hr {
@@ -237,7 +254,7 @@ def extrair_dt_abertura(row):
     return parse_data_infalivel(val)
 
 def extrair_dt_conclusao(row):
-    val = extrair_campo_flexivel(row, ["Data de conclusão", "Data de Conclusão", "Data Conclusão", "Conclusão"], "")
+    val = extrair_campo_flexivel(row, ["Data de conclusão", "Data de Conclusão", "Data Conclusão"], "")
     return parse_data_infalivel(val)
 
 def formatar_dt_exibicao(dt, val_raw=""):
@@ -397,64 +414,158 @@ if not df_calc.empty:
 tab_abertura, tab_dash, tab_gestao = st.tabs(["📌 Abrir Chamado", "📊 Dashboard & SLA", "⚙️ Gestão Operacional"])
 
 # ==========================================
-# ABA 1: ABERTURA DE CHAMADO (DUAL: VOZ OU MANUAL)
+# ABA 1: ABERTURA DE CHAMADO (LAYOUT VISUAL DO PREVIEW)
 # ==========================================
 with tab_abertura:
-    st.title("📌 Abertura de Chamado")
-    st.markdown("Escolha abaixo como prefere registrar o seu chamado de manutenção:")
+    
+    # Header estilizado
+    st.markdown("""
+        <div style="border-bottom: 1px solid #334155; padding-bottom: 12px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <h2 style="margin: 0; color: #F8FAFC; font-size: 1.4rem;">📌 Abertura de Chamado & Diagnóstico</h2>
+                <p style="margin: 4px 0 0 0; color: #94A3B8; font-size: 0.85rem;">Escolha como prefere registrar o chamado de manutenção:</p>
+            </div>
+            <span style="background: rgba(56, 189, 248, 0.15); color: #38BDF8; padding: 4px 12px; border-radius: 9999px; font-size: 0.75rem; font-weight: 700; border: 1px solid rgba(56, 189, 248, 0.3);">
+                ⚡ Rápido e Seguro
+            </span>
+        </div>
+    """, unsafe_allow_html=True)
 
-    modo_abertura = st.radio(
-        "Modo de Abertura:",
-        ["🎙️ Abertura Rápida por Voz (Áudio)", "✍️ Formulário Manual Completo"],
-        horizontal=True
-    )
+    # 2 Cards Visuais de Escolha (Voz vs Manual)
+    col_card_v, col_card_m = st.columns(2)
+    
+    with col_card_v:
+        btn_modo_voz = st.button("🎙️ Abertura por Voz (Áudio IA)", use_container_width=True)
+    with col_card_m:
+        btn_modo_manual = st.button("✍️ Escrita Manual Completa", use_container_width=True)
+
+    if "modo_selecionado" not in st.session_state:
+        st.session_state["modo_selecionado"] = "manual"
+
+    if btn_modo_voz:
+        st.session_state["modo_selecionado"] = "voz"
+    if btn_modo_manual:
+        st.session_state["modo_selecionado"] = "manual"
 
     st.markdown("---")
 
-    # MODO 1: POR VOZ
-    if "Voz" in modo_abertura:
-        st.markdown("##### 🎙️ Abertura por Áudio & Ditado Inteligente")
-        st.info("💡 **Como usar:** Digite ou dite o áudio descrevendo: *Seu Nome, Setor, Máquina, Defeito e se a máquina está parada ou não.*")
-        
-        texto_audio = st.text_area(
-            "Fale ou digite o relato da falha:",
-            placeholder="Ex: Sou o Carlos da Coloração, a Polidora 2 quebrou a manta e a máquina está parada total.",
-            height=100
+    # MODO 1: GRAVADOR DE VOZ NATIVO (HTML5 Web Speech API + Extração)
+    if st.session_state["modo_selecionado"] == "voz":
+        st.markdown("""
+            <div style="background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%); border: 1px solid #334155; border-radius: 16px; padding: 20px; text-align: center; margin-bottom: 20px;">
+                <h4 style="color: #F8FAFC; margin: 0 0 6px 0;">🎙️ Gravador de Áudio & Reconhecimento de Voz</h4>
+                <p style="color: #94A3B8; font-size: 0.8rem; margin: 0;">Clique no microfone abaixo e fale: <b>Seu Nome, Setor, Máquina e o Defeito</b>.</p>
+            </div>
+        """, unsafe_allow_html=True)
+
+        # Microfone HTML5 nativo do navegador
+        html_mic = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body { margin: 0; background: transparent; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+            .mic-btn { width: 70px; height: 70px; border-radius: 50%; background: #38BDF8; color: #0F172A; font-size: 28px; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 15px rgba(56, 189, 248, 0.4); transition: all 0.2s; }
+            .mic-btn:hover { background: #7DD3FC; transform: scale(1.05); }
+            .recording { background: #EF4444 !important; color: white !important; animation: pulse 1.5s infinite; }
+            @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); } 70% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
+            #status-text { color: #38BDF8; font-size: 13px; font-weight: 700; margin-top: 10px; }
+            #transcript-box { background: #1E293B; border: 1px solid #334155; color: #F8FAFC; border-radius: 8px; padding: 10px; font-size: 13px; width: 90%; max-width: 500px; margin-top: 12px; min-height: 40px; text-align: left; }
+          </style>
+        </head>
+        <body>
+          <button id="mic" class="mic-btn" onclick="toggleRecord()">🎙️</button>
+          <div id="status-text">Clique no microfone para falar</div>
+          <div id="transcript-box"><i>O que você falar aparecerá aqui em tempo real...</i></div>
+
+          <script>
+            let rec;
+            let isRecording = false;
+            if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+              const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+              rec = new SpeechRec();
+              rec.lang = 'pt-BR';
+              rec.continuous = false;
+              rec.interimResults = true;
+
+              rec.onstart = function() {
+                isRecording = true;
+                document.getElementById('mic').classList.add('recording');
+                document.getElementById('status-text').innerHTML = '<span style="color: #EF4444;">🔴 Ouvindo... Fale agora!</span>';
+              };
+
+              rec.onresult = function(e) {
+                let text = '';
+                for (let i = e.resultIndex; i < e.results.length; ++i) {
+                  text += e.results[i][0].transcript;
+                }
+                document.getElementById('transcript-box').innerText = text;
+              };
+
+              rec.onend = function() {
+                isRecording = false;
+                document.getElementById('mic').classList.remove('recording');
+                document.getElementById('status-text').innerText = '✅ Fala capturada! Copie ou ajuste abaixo para confirmar.';
+              };
+
+              rec.onerror = function() {
+                isRecording = false;
+                document.getElementById('mic').classList.remove('recording');
+                document.getElementById('status-text').innerText = 'Microfone finalizado.';
+              };
+            }
+
+            function toggleRecord() {
+              if (!rec) {
+                alert('Seu navegador não liberou o microfone. Use a caixa de texto abaixo.');
+                return;
+              }
+              if (isRecording) { rec.stop(); } else { rec.start(); }
+            }
+          </script>
+        </body>
+        </html>
+        """
+        components.html(html_mic, height=200)
+
+        st.markdown("##### 📝 Confirmar Relato de Voz")
+        texto_voz_input = st.text_area(
+            "Relato Capturado (você pode editar ou complementar):",
+            placeholder="Ex: Sou o Carlos da Coloração, a Polidora 2 travou a manta e está parada total.",
+            height=80
         )
-        
-        col_v1, col_v2 = st.columns(2)
-        with col_v1:
-            btn_processar = st.button("✨ Processar e Enviar Chamado por Voz")
-            
-        if btn_processar:
-            if not texto_audio or len(texto_audio.strip()) < 10:
-                st.error("🛑 Por favor, forneça um relato mais detalhado da falha.")
+
+        col_ex1, col_ex2 = st.columns(2)
+        with col_ex1:
+            if st.button("💬 Exemplo 1: Polidora 2 Parada"):
+                texto_voz_input = "Sou o Carlos da Coloração, a Polidora 2 travou a manta e está parada total."
+        with col_ex2:
+            if st.button("💬 Exemplo 2: Torno SL-501 com Ruído"):
+                texto_voz_input = "Aqui é o Marcos da Surfaçagem, o torno SL-501 está com ruído estranho no eixo mas continua rodando."
+
+        if st.button("🚀 Processar e Registrar Chamado por Voz"):
+            if not texto_voz_input or len(texto_voz_input.strip()) < 8:
+                st.error("🛑 Forneça o relato com seu nome, máquina e o defeito.")
             else:
-                t = texto_audio.lower()
-                
-                # Extração Inteligente
-                nome_identificado = "Operador"
-                if "carlos" in t: nome_identificado = "Carlos Silva"
-                elif "marcos" in t: nome_identificado = "Marcos Oliveira"
-                elif "guilherme" in t: nome_identificado = "Guilherme Santos"
-                elif "felipe" in t: nome_identificado = "Felipe"
-                elif "eric" in t: nome_identificado = "Eric"
-                
-                setor_identificado = "Geral"
-                if any(k in t for k in ["surfaçagem", "surfacagem"]): setor_identificado = "Surfaçagem"
-                elif any(k in t for k in ["coloração", "coloracao"]): setor_identificado = "Coloração"
-                elif "montagem" in t: setor_identificado = "Montagem"
-                elif "ar" in t: setor_identificado = "AR"
-                elif "estoque" in t: setor_identificado = "Estoque"
-                
-                equip_identificado = "Máquina / Equipamento"
-                if "polidora 1" in t: equip_identificado = "Polidora 1"
-                elif "polidora 2" in t: equip_identificado = "Polidora 2"
-                elif "polidora 3" in t: equip_identificado = "Polidora 3"
-                elif any(k in t for k in ["sl-501", "sl501", "satisloh"]): equip_identificado = "Satisloh SL-501"
-                elif "torno" in t: equip_identificado = "Torno CNC"
-                elif "biseladora" in t: equip_identificado = "Biseladora"
-                
+                t = texto_voz_input.lower()
+                nome_auto = "Operador"
+                if "carlos" in t: nome_auto = "Carlos Silva"
+                elif "marcos" in t: nome_auto = "Marcos Oliveira"
+                elif "guilherme" in t: nome_auto = "Guilherme Santos"
+                elif "eric" in t: nome_auto = "Eric"
+
+                setor_auto = "Geral"
+                if any(k in t for k in ["surfaçagem", "surfacagem"]): setor_auto = "Surfaçagem"
+                elif any(k in t for k in ["coloração", "coloracao"]): setor_auto = "Coloração"
+                elif "montagem" in t: setor_auto = "Montagem"
+                elif "ar" in t: setor_auto = "AR"
+
+                equip_auto = "Máquina"
+                if "polidora 1" in t: equip_auto = "Polidora 1"
+                elif "polidora 2" in t: equip_auto = "Polidora 2"
+                elif "polidora 3" in t: equip_auto = "Polidora 3"
+                elif any(k in t for k in ["sl-501", "sl501", "satisloh"]): equip_auto = "Satisloh SL-501"
+
                 if any(k in t for k in ["parada total", "parou total", "travou total", "parada"]):
                     prio_auto = "Alta"
                     impacto_auto = "Parada total"
@@ -475,38 +586,49 @@ with tab_abertura:
                     if idx is not None: nova_linha[idx] = val
 
                 proximo_num = len(df_calc) + 1
-                solicitante_str = f"{nome_identificado} ({setor_identificado})"
+                solicitante_str = f"{nome_auto} ({setor_auto})"
                 
                 preencher(["N*Chamado", "Nº Chamado", "N° Chamado"], proximo_num)
                 preencher(["Carimbo de data/hora", "Carimbo de Data/Hora", "Data/Hora"], agora)
                 preencher(["Nome e Setor", "Nome e Setor Solicitante"], solicitante_str)
-                preencher(["Área do chamado", "Área"], setor_identificado)
-                preencher(["Equipamento / Sistema / Local", "Máquina ou Equipamento"], equip_identificado)
-                preencher(["Qual é o problema?", "Descrição do problema"], texto_audio.strip())
+                preencher(["Área do chamado", "Área"], setor_auto)
+                preencher(["Equipamento / Sistema / Local", "Máquina ou Equipamento"], equip_auto)
+                preencher(["Qual é o problema?", "Descrição do problema"], texto_voz_input.strip())
                 preencher(["Impacto na operação", "Impacto"], impacto_auto)
                 preencher(["Prioridade", "Prioridade Sugerida"], prio_auto)
                 preencher(["Status"], "Pendente")
                 preencher(["Técnico Responsável", "Técnico", "Tecnico"], "Eric")
 
                 sheet.append_row(nova_linha)
-                st.success(f"✅ **Chamado Nº {proximo_num} registrado com sucesso por voz!** (Prioridade: {prio_auto} | Equipamento: {equip_identificado})")
+                st.success(f"✅ **Chamado Nº {proximo_num} registrado com sucesso para {nome_auto}!** (SLA: {prio_auto} | Máquina: {equip_auto})")
                 st.cache_data.clear()
                 st.rerun()
 
-    # MODO 2: FORMULÁRIO MANUAL COMPLETO
+    # MODO 2: FORMULÁRIO MANUAL COM DESIGN IDÊNTICO AO PREVIEW
     else:
-        st.markdown("##### ✍️ Formulário Manual & Diagnóstico Técnico")
-        with st.form("form_abertura_manual", clear_on_submit=True):
-            st.markdown("###### 1. Identificação do Solicitante")
+        st.markdown("""
+            <div style="background-color: #1E293B; border: 1px solid #334155; border-radius: 16px; padding: 24px; margin-bottom: 20px;">
+                <div style="color: #38BDF8; font-size: 0.8rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px;">
+                    1. Identificação do Solicitante
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+
+        with st.form("form_abertura_manual_preview", clear_on_submit=True):
             col1, col2 = st.columns(2)
             with col1:
                 nome_solicitante = st.text_input("Seu Nome Completo (Pessoa) *", placeholder="Ex: Carlos Silva")
                 st.caption("🔒 *Obrigatório: digite seu nome pessoal, não apenas o setor.*")
             with col2:
-                area = st.selectbox("Seu Setor / Área *", ["Surfaçagem", "Coloração", "AR", "Montagem", "Estoque", "Expedição", "Atendimento", "TI", "Diretoria", "Geral"])
+                area = st.selectbox("Seu Setor / Área *", ["Surfaçagem", "Coloração", "Tratamento AR", "Montagem", "Estoque", "Expedição", "TI", "Geral"])
 
             st.markdown("---")
-            st.markdown("###### 2. Diagnóstico Técnico Inicial")
+            st.markdown("""
+                <div style="color: #38BDF8; font-size: 0.8rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; margin: 16px 0 10px 0;">
+                    2. Diagnóstico Técnico Inicial
+                </div>
+            """, unsafe_allow_html=True)
+
             col3, col4 = st.columns(2)
             with col3:
                 equipamento = st.text_input("Equipamento / Máquina / Local *", placeholder="Ex: Polidora 2, Satisloh SL-501...")
@@ -520,18 +642,49 @@ with tab_abertura:
                     "❓ Outro Sintoma"
                 ])
                 
-            codigo_alarme = st.text_input("Código ou Mensagem de Erro no Painel (se houver)", placeholder="Ex: Erro E-104 / Alarme Pressão Baixa / Nenhum")
+            codigo_alarme = st.text_input("Código ou Mensagem de Erro no Painel (se houver)", placeholder="Ex: Erro E-104 / Alarme Pressão Baixa / Não tem código")
 
             st.markdown("---")
-            st.markdown("###### 3. Situação Real da Máquina & Gravidade")
-            condicao_escolhida = st.radio(
-                "Situação Operacional da Máquina:",
+            st.markdown("""
+                <div style="color: #38BDF8; font-size: 0.8rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; margin: 16px 0 10px 0;">
+                    3. Situação Real da Máquina & Gravidade
+                </div>
+            """, unsafe_allow_html=True)
+
+            # Os 3 Cards Explicativos de Situação
+            st.markdown("""
+                <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px;">
+                    <div style="background-color: #0F172A; border: 2px solid #EF4444; border-radius: 10px; padding: 12px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <b style="color: #F87171; font-size: 0.9rem;">🔴 1. MÁQUINA TOTALMENTE PARADA</b>
+                            <span style="background: rgba(239, 68, 68, 0.2); color: #FCA5A5; padding: 2px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 800;">SLA: Até 4 Horas</span>
+                        </div>
+                        <div style="color: #CBD5E1; font-size: 0.75rem; margin-top: 4px;">A máquina <b>não funciona 100%</b> e a produção do setor está <b>bloqueada sem máquina reserva</b>.</div>
+                    </div>
+                    <div style="background-color: #0F172A; border: 1px solid #F59E0B; border-radius: 10px; padding: 12px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <b style="color: #FBBF24; font-size: 0.9rem;">🟡 2. OPERANDO COM FALHA / LENTIDÃO</b>
+                            <span style="background: rgba(245, 158, 11, 0.2); color: #FDE68A; padding: 2px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 800;">SLA: Até 8 Horas</span>
+                        </div>
+                        <div style="color: #CBD5E1; font-size: 0.75rem; margin-top: 4px;">A máquina continua rodando com ruído, lentidão ou há outra máquina absorvendo a produção.</div>
+                    </div>
+                    <div style="background-color: #0F172A; border: 1px solid #10B981; border-radius: 10px; padding: 12px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <b style="color: #34D399; font-size: 0.9rem;">🟢 3. AJUSTE / PREVENTIVA / SEM PARADA</b>
+                            <span style="background: rgba(16, 185, 129, 0.2); color: #A7F3D0; padding: 2px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 800;">SLA: Até 48 Horas (2 Dias)</span>
+                        </div>
+                        <div style="color: #CBD5E1; font-size: 0.75rem; margin-top: 4px;">Troca de manta, lâmpada, lubrificação, reaperto ou melhoria programada sem impacto imediato.</div>
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
+
+            condicao_escolhida = st.selectbox(
+                "Selecione a Situação Correspondente *",
                 [
-                    "🔴 MÁQUINA TOTALMENTE PARADA (SLA: Até 4 Horas - Produção Bloqueada)",
-                    "🟡 OPERANDO COM FALHA / LENTIDÃO (SLA: Até 8 Horas - Mesmo dia)",
-                    "🟢 AJUSTE / PREVENTIVA / SEM PARADA (SLA: Até 48 Horas - 2 Dias Úteis)"
-                ],
-                index=0
+                    "🔴 MÁQUINA TOTALMENTE PARADA (SLA: Até 4 Horas)",
+                    "🟡 OPERANDO COM FALHA / LENTIDÃO (SLA: Até 8 Horas)",
+                    "🟢 AJUSTE / PREVENTIVA / SEM PARADA (SLA: Até 48 Horas - 2 Dias)"
+                ]
             )
 
             problema_detalhe = st.text_area(
