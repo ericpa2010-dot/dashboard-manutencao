@@ -1,4 +1,4 @@
-﻿import streamlit as st
+import streamlit as st
 import pandas as pd
 import numpy as np
 import gspread
@@ -106,7 +106,8 @@ def get_gspread_client():
     ]
     creds_dict = dict(st.secrets["gcp_service_account"])
     if "private_key" in creds_dict:
-        creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+        creds_dict["private_key"] = creds_dict["private_key"].replace("\n", "
+")
     creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
     return gspread.authorize(creds)
 
@@ -120,7 +121,7 @@ def extrair_campo_flexivel(row, candidatos, padrao=""):
         for col_name in row.index:
             col_clean = str(col_name).strip().lower()
             if col_clean == c_clean:
-                val = str(row[col_name]).replace('\xa0', ' ').strip()
+                val = str(row[col_name]).replace(' ', ' ').strip()
                 if val != "" and val.lower() not in ["nan", "none", "null"]:
                     return val
 
@@ -129,7 +130,7 @@ def extrair_campo_flexivel(row, candidatos, padrao=""):
         for col_name in row.index:
             col_alnum = re.sub(r'[^a-z0-9]', '', str(col_name).lower())
             if col_alnum == c_alnum and c_alnum != "":
-                val = str(row[col_name]).replace('\xa0', ' ').strip()
+                val = str(row[col_name]).replace(' ', ' ').strip()
                 if val != "" and val.lower() not in ["nan", "none", "null"]:
                     return val
 
@@ -139,7 +140,7 @@ def extrair_campo_flexivel(row, candidatos, padrao=""):
             for col_name in row.index:
                 col_clean = str(col_name).strip().lower()
                 if c_clean in col_clean:
-                    val = str(row[col_name]).replace('\xa0', ' ').strip()
+                    val = str(row[col_name]).replace(' ', ' ').strip()
                     if val != "" and val.lower() not in ["nan", "none", "null"]:
                         return val
     return padrao
@@ -201,7 +202,7 @@ def calcular_horas_uteis(dt_inicio, dt_fim, hora_inicio=None, hora_fim=None):
 def parse_data_infalivel(val):
     if not val or pd.isna(val):
         return pd.NaT
-    s = str(val).replace('\xa0', ' ').strip()
+    s = str(val).replace(' ', ' ').strip()
     if s.lower() in ["nan", "none", "", "-", "null", "0"]:
         return pd.NaT
     
@@ -242,7 +243,7 @@ def extrair_dt_conclusao(row):
 
 def formatar_dt_exibicao(dt, val_raw=""):
     if pd.notna(dt): return dt.strftime("%d/%m/%Y %H:%M:%S")
-    s = str(val_raw).replace('\xa0', ' ').strip()
+    s = str(val_raw).replace(' ', ' ').strip()
     return s if s not in ["", "nan", "None", "-"] else "-"
 
 def formatar_tempo_legivel(horas):
@@ -396,70 +397,75 @@ if not df_calc.empty:
 
 tab_abertura, tab_dash, tab_gestao = st.tabs(["📌 Abrir Chamado", "📊 Dashboard & SLA", "⚙️ Gestão Operacional"])
 
-# ABA 1: ABERTURA DE CHAMADO (CAMPOS OBRIGATÓRIOS E NOME DA PESSOA EXIGIDO)
+# ==========================================
+# ABA 1: ABERTURA DE CHAMADO (DUAL: VOZ OU MANUAL)
+# ==========================================
 with tab_abertura:
     st.title("📌 Abertura de Chamado")
-    st.markdown("Preencha todos os campos obrigatórios abaixo para acionar a equipe de manutenção.")
-    
-    # Lista de equipamentos conhecidos para sugestão
-    equipamentos_conhecidos = []
-    if not df_calc.empty and "Equipamento_Norm" in df_calc.columns:
-        equipamentos_conhecidos = sorted([eq for eq in df_calc["Equipamento_Norm"].dropna().unique() if eq not in ["Não informado", "Sem descrição", "Geral", ""]])
-    
-    opcoes_equipamento = ["-- Selecione ou digite outro abaixo --"] + equipamentos_conhecidos + ["Outro equipamento não listado"]
+    st.markdown("Escolha abaixo como prefere abrir o seu chamado de manutenção:")
 
-    with st.form("form_abertura", clear_on_submit=True):
-        col1, col2 = st.columns(2)
-        with col1:
-            nome_solicitante = st.text_input("Seu Nome Completo (Pessoa) *", placeholder="Ex: Carlos Silva (digite seu nome pessoal)")
-            area = st.selectbox("Seu Setor / Área *", ["Surfaçagem", "Coloração", "AR", "Montagem", "Estoque", "Expedição", "Atendimento", "TI", "Diretoria", "Geral"])
-            
-            eq_selecionado = st.selectbox("Equipamento / Máquina Frequente *", opcoes_equipamento)
-            if eq_selecionado in ["-- Selecione ou digite outro abaixo --", "Outro equipamento não listado"]:
-                equipamento_digitado = st.text_input("Digite o Nome da Máquina / Equipamento *", placeholder="Ex: Satisloh SL-501, Polidora 1, etc.")
-                equipamento_final = equipamento_digitado
-            else:
-                equipamento_final = eq_selecionado
-                
-        with col2:
-            email = st.text_input("E-mail para Notificação (Opcional)")
-            impacto = st.selectbox("Impacto na Operação *", ["Parada total", "Parada parcial", "Sem impacto"])
-            prioridade = st.selectbox("Prioridade Sugerida *", ["Alta", "Média", "Baixa"])
-            info_adicional = st.text_input("Link de Foto / Vídeo / Anexo (Opcional)")
+    modo_abertura = st.radio(
+        "Modo de Abertura:",
+        ["🎙️ Abertura Rápida por Voz (Áudio)", "✍️ Formulário Manual Completo"],
+        horizontal=True
+    )
 
-        problema = st.text_input("Qual é o problema? (Resumo claro do defeito) *", placeholder="Ex: Máquina travou com erro no sensor de vácuo")
-        observado = st.text_area("O que foi observado durante a falha? *", placeholder="Ex: Ruído anormal no motor e lâmpada vermelha de alarme piscando")
-        testado = st.text_area("O que já foi feito/testado antes de abrir o chamado?", placeholder="Ex: Reiniciamos o disjuntor principal, mas o erro persistiu")
+    st.markdown("---")
+
+    # MODO 1: POR VOZ
+    if "Voz" in modo_abertura:
+        st.markdown("##### 🎙️ Abertura por Áudio & Ditado Inteligente")
+        st.info("💡 **Como usar:** Digite ou dite o áudio descrevendo: *Seu Nome, Setor, Máquina, Defeito e se a máquina está parada ou não.*")
         
-        submitted = st.form_submit_button("🚀 Registrar Chamado de Manutenção")
-
-        if submitted:
-            campos_faltantes = []
+        texto_audio = st.text_area(
+            "Fale ou digite o relato da falha:",
+            placeholder="Ex: Sou o Carlos da Coloração, a Polidora 2 quebrou a manta e a máquina está parada total.",
+            height=100
+        )
+        
+        col_v1, col_v2 = st.columns(2)
+        with col_v1:
+            btn_processar = st.button("✨ Processar e Enviar Chamado por Voz")
             
-            # Validação do Nome da Pessoa (bloqueia se colocar apenas o setor)
-            nome_clean = nome_solicitante.strip()
-            setores_bloqueados = ["surfaçagem", "surfacagem", "coloração", "coloracao", "ar", "montagem", "estoque", "expedição", "expedicao", "ti", "diretoria", "geral"]
-            
-            if not nome_clean or len(nome_clean) < 3:
-                campos_faltantes.append("Seu Nome Completo (informe seu nome de pessoa, não deixe em branco)")
-            elif nome_clean.lower() in setores_bloqueados:
-                campos_faltantes.append("Seu Nome Completo (você digitou apenas o nome do setor; por favor, informe o seu nome)")
-
-            if not area or not area.strip():
-                campos_faltantes.append("Seu Setor / Área")
-                
-            if not equipamento_final or not equipamento_final.strip():
-                campos_faltantes.append("Equipamento / Máquina / Local")
-                
-            if not problema or not problema.strip():
-                campos_faltantes.append("Qual é o problema? (Resumo)")
-                
-            if not observado or not observado.strip():
-                campos_faltantes.append("O que foi observado durante a falha?")
-
-            if campos_faltantes:
-                st.error("🛑 **Abertura Bloqueada!** Preencha os campos obrigatórios:\n\n" + "\n".join([f"• **{campo}**" for campo in campos_faltantes]))
+        if btn_processar:
+            if not texto_audio or len(texto_audio.strip()) < 10:
+                st.error("🛑 Por favor, forneça um relato mais detalhado da falha.")
             else:
+                t = texto_audio.lower()
+                
+                # Extração Inteligente
+                nome_identificado = "Operador"
+                if "carlos" in t: nome_identificado = "Carlos Silva"
+                elif "marcos" in t: nome_identificado = "Marcos Oliveira"
+                elif "guilherme" in t: nome_identificado = "Guilherme Santos"
+                elif "felipe" in t: nome_identificado = "Felipe"
+                elif "eric" in t: nome_identificado = "Eric"
+                
+                setor_identificado = "Geral"
+                if any(k in t for k in ["surfaçagem", "surfacagem"]): setor_identificado = "Surfaçagem"
+                elif any(k in t for k in ["coloração", "coloracao"]): setor_identificado = "Coloração"
+                elif "montagem" in t: setor_identificado = "Montagem"
+                elif "ar" in t: setor_identificado = "AR"
+                elif "estoque" in t: setor_identificado = "Estoque"
+                
+                equip_identificado = "Máquina / Equipamento"
+                if "polidora 1" in t: equip_identificado = "Polidora 1"
+                elif "polidora 2" in t: equip_identificado = "Polidora 2"
+                elif "polidora 3" in t: equip_identificado = "Polidora 3"
+                elif any(k in t for k in ["sl-501", "sl501", "satisloh"]): equip_identificado = "Satisloh SL-501"
+                elif "torno" in t: equip_identificado = "Torno CNC"
+                elif "biseladora" in t: equip_identificado = "Biseladora"
+                
+                if any(k in t for k in ["parada total", "parou total", "travou total", "parada"]):
+                    prio_auto = "Alta"
+                    impacto_auto = "Parada total"
+                elif any(k in t for k in ["lentid", "falha", "ruido", "barulho", "vazamento"]):
+                    prio_auto = "Média"
+                    impacto_auto = "Parada parcial"
+                else:
+                    prio_auto = "Baixa"
+                    impacto_auto = "Sem impacto"
+
                 sheet = get_sheet()
                 agora = datetime.now(pytz.timezone("America/Sao_Paulo")).strftime("%d/%m/%Y %H:%M:%S")
                 headers = [str(h).strip() for h in sheet.row_values(1)]
@@ -470,27 +476,140 @@ with tab_abertura:
                     if idx is not None: nova_linha[idx] = val
 
                 proximo_num = len(df_calc) + 1
-                
-                # Salva o Solicitante com Nome e Setor juntos
-                solicitante_formatado = f"{nome_clean} ({area})"
+                solicitante_str = f"{nome_identificado} ({setor_identificado})"
                 
                 preencher(["N*Chamado", "Nº Chamado", "N° Chamado"], proximo_num)
                 preencher(["Carimbo de data/hora", "Carimbo de Data/Hora", "Data/Hora"], agora)
-                preencher(["Endereço de e-mail", "E-mail"], email)
-                preencher(["Nome e Setor", "Nome e Setor Solicitante"], solicitante_formatado)
-                preencher(["Área do chamado", "Área"], area)
-                preencher(["Equipamento / Sistema / Local", "Máquina ou Equipamento"], equipamento_final.strip())
-                preencher(["Qual é o problema?", "Descrição do problema"], problema.strip())
-                preencher(["Prioridade", "Prioridade Sugerida"], prioridade)
+                preencher(["Nome e Setor", "Nome e Setor Solicitante"], solicitante_str)
+                preencher(["Área do chamado", "Área"], setor_identificado)
+                preencher(["Equipamento / Sistema / Local", "Máquina ou Equipamento"], equip_identificado)
+                preencher(["Qual é o problema?", "Descrição do problema"], texto_audio.strip())
+                preencher(["Impacto na operação", "Impacto"], impacto_auto)
+                preencher(["Prioridade", "Prioridade Sugerida"], prio_auto)
                 preencher(["Status"], "Pendente")
                 preencher(["Técnico Responsável", "Técnico", "Tecnico"], "Eric")
 
                 sheet.append_row(nova_linha)
-                st.success(f"✅ **Chamado Nº {proximo_num} registrado com sucesso para {nome_clean}!** A equipe técnica foi notificada.")
+                st.success(f"✅ **Chamado Nº {proximo_num} registrado com sucesso por voz!** (Prioridade: {prio_auto} | Equipamento: {equip_identificado})")
                 st.cache_data.clear()
                 st.rerun()
 
+    # MODO 2: FORMULÁRIO MANUAL COMPLETO
+    else:
+        st.markdown("##### ✍️ Formulário Manual & Diagnóstico Técnico")
+        with st.form("form_abertura_manual", clear_on_submit=True):
+            st.markdown("###### 1. Identificação do Solicitante")
+            col1, col2 = st.columns(2)
+            with col1:
+                nome_solicitante = st.text_input("Seu Nome Completo (Pessoa) *", placeholder="Ex: Carlos Silva")
+                st.caption("🔒 *Obrigatório: digite seu nome pessoal, não apenas o setor.*")
+            with col2:
+                area = st.selectbox("Seu Setor / Área *", ["Surfaçagem", "Coloração", "AR", "Montagem", "Estoque", "Expedição", "Atendimento", "TI", "Diretoria", "Geral"])
+
+            st.markdown("---")
+            st.markdown("###### 2. Diagnóstico Técnico Inicial")
+            col3, col4 = st.columns(2)
+            with col3:
+                equipamento = st.text_input("Equipamento / Máquina / Local *", placeholder="Ex: Polidora 2, Satisloh SL-501...")
+            with col4:
+                sintoma = st.selectbox("Sintoma Principal da Falha *", [
+                    "⚡ Elétrica / Painel (Não liga, disjuntor, sensor)",
+                    "⚙️ Mecânica / Ruído (Travamento, vibração, folga)",
+                    "💧 Pneumática / Hidráulica (Vácuo, ar, vazamento)",
+                    "🔬 Qualidade / Descalibração (Riscando, descentrado)",
+                    "🖥️ Software / CNC (Tela travada, erro de leitura)",
+                    "❓ Outro Sintoma"
+                ])
+                
+            codigo_alarme = st.text_input("Código ou Mensagem de Erro no Painel (se houver)", placeholder="Ex: Erro E-104 / Alarme Pressão Baixa / Nenhum")
+
+            st.markdown("---")
+            st.markdown("###### 3. Situação Real da Máquina & Gravidade")
+            condicao_escolhida = st.radio(
+                "Situação Operacional da Máquina:",
+                [
+                    "🔴 MÁQUINA TOTALMENTE PARADA (SLA: Até 4 Horas - Produção Bloqueada)",
+                    "🟡 OPERANDO COM FALHA / LENTIDÃO (SLA: Até 8 Horas - Mesmo dia)",
+                    "🟢 AJUSTE / PREVENTIVA / SEM PARADA (SLA: Até 48 Horas - 2 Dias Úteis)"
+                ],
+                index=0
+            )
+
+            problema_detalhe = st.text_area(
+                "O que a máquina está fazendo? (Breve resumo) *",
+                placeholder="Ex: Ao iniciar o ciclo de polimento, o braço não desce e o display aponta erro de vácuo...",
+                height=90
+            )
+
+            submitted_manual = st.form_submit_button("🚀 Registrar Chamado de Manutenção")
+
+            if submitted_manual:
+                campos_faltantes = []
+                nome_clean = nome_solicitante.strip()
+                setores_bloqueados = ["surfaçagem", "surfacagem", "coloração", "coloracao", "ar", "montagem", "estoque", "expedição", "expedicao", "ti", "diretoria", "geral"]
+
+                if not nome_clean or len(nome_clean) < 3:
+                    campos_faltantes.append("Seu Nome Completo (informe seu nome pessoal)")
+                elif nome_clean.lower() in setores_bloqueados:
+                    campos_faltantes.append(f"Você digitou '{nome_clean}' no campo de nome. Digite seu nome de pessoa, pois o setor já está selecionado ao lado.")
+
+                if not equipamento or not equipamento.strip():
+                    campos_faltantes.append("Equipamento / Máquina / Local")
+
+                if not problema_detalhe or len(problema_detalhe.strip()) < 5:
+                    campos_faltantes.append("O que a máquina está fazendo? (Descreva brevemente)")
+
+                if campos_faltantes:
+                    st.error("🛑 **Abertura Bloqueada!** Corrija os seguintes itens:
+
+" + "
+".join([f"• **{campo}**" for campo in campos_faltantes]))
+                else:
+                    if "🔴" in condicao_escolhida:
+                        prio_final = "Alta"
+                        impacto_final = "Parada total"
+                    elif "🟡" in condicao_escolhida:
+                        prio_final = "Média"
+                        impacto_final = "Parada parcial"
+                    else:
+                        prio_final = "Baixa"
+                        impacto_final = "Sem impacto"
+
+                    desc_completa = f"[{sintoma.split(' (')[0]}] {problema_detalhe.strip()}"
+                    if codigo_alarme.strip():
+                        desc_completa += f" (Código no Painel: {codigo_alarme.strip()})"
+
+                    sheet = get_sheet()
+                    agora = datetime.now(pytz.timezone("America/Sao_Paulo")).strftime("%d/%m/%Y %H:%M:%S")
+                    headers = [str(h).strip() for h in sheet.row_values(1)]
+                    nova_linha = [""] * len(headers)
+                    
+                    def preencher(col_cands, val):
+                        idx, col_encontrada = encontrar_coluna(headers, col_cands)
+                        if idx is not None: nova_linha[idx] = val
+
+                    proximo_num = len(df_calc) + 1
+                    solicitante_formatado = f"{nome_clean} ({area})"
+
+                    preencher(["N*Chamado", "Nº Chamado", "N° Chamado"], proximo_num)
+                    preencher(["Carimbo de data/hora", "Carimbo de Data/Hora", "Data/Hora"], agora)
+                    preencher(["Nome e Setor", "Nome e Setor Solicitante"], solicitante_formatado)
+                    preencher(["Área do chamado", "Área"], area)
+                    preencher(["Equipamento / Sistema / Local", "Máquina ou Equipamento"], equipamento.strip())
+                    preencher(["Qual é o problema?", "Descrição do problema"], desc_completa)
+                    preencher(["Impacto na operação", "Impacto"], impacto_final)
+                    preencher(["Prioridade", "Prioridade Sugerida"], prio_final)
+                    preencher(["Status"], "Pendente")
+                    preencher(["Técnico Responsável", "Técnico", "Tecnico"], "Eric")
+
+                    sheet.append_row(nova_linha)
+                    st.success(f"✅ **Chamado Nº {proximo_num} registrado com sucesso para {nome_clean}!** (SLA: {prio_final})")
+                    st.cache_data.clear()
+                    st.rerun()
+
+# ==========================================
 # ABA 2: DASHBOARD & SLA COMPLETO
+# ==========================================
 with tab_dash:
     col_titulo, col_filtro = st.columns([3, 1])
     with col_titulo:
@@ -812,7 +931,9 @@ with tab_dash:
         fig_setor = criar_grafico_pareto_limpo(df_calc, "Area_Norm", "Top Setores Solicitantes", top_n=10)
         if fig_setor: st.plotly_chart(fig_setor, use_container_width=True)
 
+# ==========================================
 # ABA 3: GESTÃO OPERACIONAL DE CHAMADOS
+# ==========================================
 with tab_gestao:
     st.title("⚙️ Gestão Operacional de Chamados")
     senha_digitada = st.text_input("Chave de Acesso Operacional", type="password", key="pwd_gestao")
