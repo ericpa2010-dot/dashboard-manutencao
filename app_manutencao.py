@@ -106,8 +106,7 @@ def get_gspread_client():
     ]
     creds_dict = dict(st.secrets["gcp_service_account"])
     if "private_key" in creds_dict:
-        creds_dict["private_key"] = creds_dict["private_key"].replace("\n", "
-")
+        creds_dict["private_key"] = creds_dict["private_key"].replace(r"\n", "\n")
     creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
     return gspread.authorize(creds)
 
@@ -121,7 +120,7 @@ def extrair_campo_flexivel(row, candidatos, padrao=""):
         for col_name in row.index:
             col_clean = str(col_name).strip().lower()
             if col_clean == c_clean:
-                val = str(row[col_name]).replace(' ', ' ').strip()
+                val = str(row[col_name]).replace('\xa0', ' ').strip()
                 if val != "" and val.lower() not in ["nan", "none", "null"]:
                     return val
 
@@ -130,7 +129,7 @@ def extrair_campo_flexivel(row, candidatos, padrao=""):
         for col_name in row.index:
             col_alnum = re.sub(r'[^a-z0-9]', '', str(col_name).lower())
             if col_alnum == c_alnum and c_alnum != "":
-                val = str(row[col_name]).replace(' ', ' ').strip()
+                val = str(row[col_name]).replace('\xa0', ' ').strip()
                 if val != "" and val.lower() not in ["nan", "none", "null"]:
                     return val
 
@@ -140,7 +139,7 @@ def extrair_campo_flexivel(row, candidatos, padrao=""):
             for col_name in row.index:
                 col_clean = str(col_name).strip().lower()
                 if c_clean in col_clean:
-                    val = str(row[col_name]).replace(' ', ' ').strip()
+                    val = str(row[col_name]).replace('\xa0', ' ').strip()
                     if val != "" and val.lower() not in ["nan", "none", "null"]:
                         return val
     return padrao
@@ -202,7 +201,7 @@ def calcular_horas_uteis(dt_inicio, dt_fim, hora_inicio=None, hora_fim=None):
 def parse_data_infalivel(val):
     if not val or pd.isna(val):
         return pd.NaT
-    s = str(val).replace(' ', ' ').strip()
+    s = str(val).replace('\xa0', ' ').strip()
     if s.lower() in ["nan", "none", "", "-", "null", "0"]:
         return pd.NaT
     
@@ -243,7 +242,7 @@ def extrair_dt_conclusao(row):
 
 def formatar_dt_exibicao(dt, val_raw=""):
     if pd.notna(dt): return dt.strftime("%d/%m/%Y %H:%M:%S")
-    s = str(val_raw).replace(' ', ' ').strip()
+    s = str(val_raw).replace('\xa0', ' ').strip()
     return s if s not in ["", "nan", "None", "-"] else "-"
 
 def formatar_tempo_legivel(horas):
@@ -402,7 +401,7 @@ tab_abertura, tab_dash, tab_gestao = st.tabs(["📌 Abrir Chamado", "📊 Dashbo
 # ==========================================
 with tab_abertura:
     st.title("📌 Abertura de Chamado")
-    st.markdown("Escolha abaixo como prefere abrir o seu chamado de manutenção:")
+    st.markdown("Escolha abaixo como prefere registrar o seu chamado de manutenção:")
 
     modo_abertura = st.radio(
         "Modo de Abertura:",
@@ -560,10 +559,7 @@ with tab_abertura:
                     campos_faltantes.append("O que a máquina está fazendo? (Descreva brevemente)")
 
                 if campos_faltantes:
-                    st.error("🛑 **Abertura Bloqueada!** Corrija os seguintes itens:
-
-" + "
-".join([f"• **{campo}**" for campo in campos_faltantes]))
+                    st.error("🛑 **Abertura Bloqueada!** Corrija os seguintes itens:\n\n" + "\n".join([f"• **{campo}**" for campo in campos_faltantes]))
                 else:
                     if "🔴" in condicao_escolhida:
                         prio_final = "Alta"
