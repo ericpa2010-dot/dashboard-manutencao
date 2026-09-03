@@ -11,6 +11,7 @@ import re
 import textwrap
 import plotly.express as px
 import plotly.graph_objects as go
+import controle_setores
 
 # Configuração da página
 st.set_page_config(page_title="Gestão de Manutenção", page_icon="🛠️", layout="wide")
@@ -411,7 +412,7 @@ if not df_calc.empty:
     agora_br = datetime.now(fuso_br)
     agora_naive_geral = pd.Timestamp(agora_br.replace(tzinfo=None))
 
-tab_abertura, tab_dash, tab_gestao = st.tabs(["📌 Abrir Chamado", "📊 Dashboard & SLA", "⚙️ Gestão Operacional"])
+tab_abertura, tab_dash, tab_gestao, tab_setores = st.tabs(["📌 Abrir Chamado", "📊 Dashboard & SLA", "⚙️ Gestão Operacional", "🏭 Controle Setores"])
 
 # ==========================================
 # ABA 1: ABERTURA DE CHAMADO (MANUAL 1º LUGAR, VOZ 2º LUGAR)
@@ -1198,3 +1199,9 @@ with tab_gestao:
                     st.success(f"Chamado Nº {num_chamado_sel} atualizado com sucesso!")
                     st.cache_data.clear()
                     st.rerun()
+
+# ==========================================
+# ABA 4: CONTROLE DE SETORES
+# ==========================================
+with tab_setores:
+    controle_setores.render()
