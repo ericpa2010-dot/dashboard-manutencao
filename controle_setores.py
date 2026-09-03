@@ -108,7 +108,7 @@ ENTIDADES = {
         "seed": [
             ["Anti Reflexo", "Filamento Ion Gun", 1, HOJE_SEED, "", ""],
             ["Anti Reflexo", "Filamento EBG", 3, HOJE_SEED, "", ""],
-            ["Anti Reflexo", "Distribuidor de gas", 1, HOJE_SEED, "", "+1 em uso"],
+            ["Anti Reflexo", "Distribuidor de gas", 1, HOJE_SEED, "", "1 em uso, 1 reserva"],
         ],
     },
     "HISTORICO_REPOSICAO": {
@@ -160,7 +160,9 @@ def _ws(nome):
     except WorksheetNotFound:
         ws = ss.add_worksheet(title=nome, rows=200, cols=max(12, len(cfg["headers"])))
         linhas = [cfg["headers"]] + cfg.get("seed", [])
-        ws.append_rows(linhas, value_input_option="USER_ENTERED")
+        # RAW: numeros ficam numericos e texto e' literal (evita que valores
+        # como "+1 em uso" ou "5,5" sejam interpretados como formula/erro).
+        ws.append_rows(linhas, value_input_option="RAW")
         return ws
 
 
@@ -187,7 +189,7 @@ def _load(nome):
 
 
 def _append(nome, linha):
-    _ws(nome).append_row(linha, value_input_option="USER_ENTERED")
+    _ws(nome).append_row(linha, value_input_option="RAW")
 
 
 def _atualizar(nome, filtros, updates):
@@ -212,7 +214,9 @@ def _atualizar(nome, filtros, updates):
                                  "values": [[novo]]})
             break
     if lote:
-        ws.batch_update(lote, value_input_option="USER_ENTERED")
+        # RAW p/ consistencia com o seed: datas ficam como texto dd/mm/aaaa
+        # (lidas com dayfirst=True) e numeros ficam numericos.
+        ws.batch_update(lote, value_input_option="RAW")
         return True
     return False
 
