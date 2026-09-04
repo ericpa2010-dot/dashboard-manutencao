@@ -1,3 +1,4 @@
+# Versao Atualizada em 04/09/2026 16:24:53
 import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
