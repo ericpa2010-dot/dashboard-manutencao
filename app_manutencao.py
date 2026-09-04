@@ -1,4 +1,4 @@
-# Versao Pratica 04/09/2026 16:42:04
+# Versao Nativa Blindada 04/09/2026 16:43:21
 import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
