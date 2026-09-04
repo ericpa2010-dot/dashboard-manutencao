@@ -1,10 +1,9 @@
 """
-Controle de Setores - Módulo Especialista Corrigido
+Controle de Setores - Módulo Prático & Direto
 """
 
 import re
 from datetime import datetime, timedelta
-import textwrap
 import pandas as pd
 import pytz
 import streamlit as st
@@ -22,14 +21,6 @@ COBERTURA_AMARELA  = 120  # 60 a 120 dias -> Atenção / Ponto de Pedido
 
 HOJE_STR = datetime.now(FUSO_BR).strftime("%d/%m/%Y")
 
-def _render_html(html_str):
-    """Remove quebras de linha do HTML para evitar que o Markdown do Streamlit interprete indentação como código"""
-    limpo = re.sub(r'>\s+<', '><', html_str.strip())
-    limpo = re.sub(r'\s*\n\s*', ' ', limpo)
-    st.markdown(limpo, unsafe_allow_html=True)
-
-
-# Dados técnicos conhecidos de consumo e lote para Anti Reflexo
 DADOS_TECNICOS_INSUMOS = {
     "zircônio":        {"consumo_dia": 0.24,    "gramas_lote": 3.0, "unidade": "kg", "obs": "Pastilha 6g a cada 2 lotes (3g/lote)"},
     "zirconio":        {"consumo_dia": 0.24,    "gramas_lote": 3.0, "unidade": "kg", "obs": "Pastilha 6g a cada 2 lotes (3g/lote)"},
@@ -48,19 +39,19 @@ ENTIDADES = {
     "INSUMOS": {
         "headers": ["setor", "nome", "estoque_atual", "unidade", "consumo_dia_calculado", "gramas_por_lote", "status", "observacao"],
         "seed": [
-            ["Anti Reflexo", "Zircônio", 0, "kg", 0.24, 3.0, "ativo", "Pastilha 6g a cada 2 lotes (3g/lote)"],
-            ["Anti Reflexo", "Silício", 0, "kg", 0.20, 5.0, "ativo", "5g por lote (dois recipientes de 2,5g)"],
-            ["Anti Reflexo", "Cromo Silício", 0, "kg", 0.00071, 2.5, "ativo", "Troca 2x por semana (2,5g por troca)"],
-            ["Anti Reflexo", "Hidrofóbico", 0, "und", 40, "", "ativo", "40 und/dia"],
-            ["Anti Reflexo", "Crystal de quartz", 50, "und", 2.9, "", "ativo", "2,9 und/dia"],
+            ["Anti Reflexo", "Zircônio", 0.0, "kg", 0.24, 3.0, "ativo", "Pastilha 6g a cada 2 lotes (3g/lote)"],
+            ["Anti Reflexo", "Silício", 0.0, "kg", 0.20, 5.0, "ativo", "5g por lote (dois recipientes de 2,5g)"],
+            ["Anti Reflexo", "Cromo Silício", 0.0, "kg", 0.00071, 2.5, "ativo", "Troca 2x por semana (2,5g por troca)"],
+            ["Anti Reflexo", "Hidrofóbico", 0.0, "und", 40, "", "ativo", "40 und/dia"],
+            ["Anti Reflexo", "Crystal de quartz", 50.0, "und", 2.9, "", "ativo", "2,9 und/dia"],
             ["Anti Reflexo", "ITO", 1.5, "kg", 0.02, 2.5, "pausado", "2,5g por lote (processo pausado)"],
-            ["Anti Reflexo", "Prime H-580", 2, "und", "", "", "ativo", ""],
-            ["Anti Reflexo", "Verniz 150S", 3, "und", "", "", "ativo", ""],
-            ["Anti Reflexo", "Verniz 150", 1, "und", "", "", "ativo", ""],
-            ["Anti Reflexo", "Soda", 30, "L", "", "", "ativo", ""],
-            ["Anti Reflexo", "Detergente ácido", 20, "L", "", "", "ativo", ""],
-            ["Anti Reflexo", "Álcool isopropílico", 10, "L", "", "", "ativo", ""],
-            ["Anti Reflexo", "OTB UV-XBT", 41, "und", 0.067, "", "ativo", "Consumo est.: 2/mês"],
+            ["Anti Reflexo", "Prime H-580", 2.0, "und", "", "", "ativo", ""],
+            ["Anti Reflexo", "Verniz 150S", 3.0, "und", "", "", "ativo", ""],
+            ["Anti Reflexo", "Verniz 150", 1.0, "und", "", "", "ativo", ""],
+            ["Anti Reflexo", "Soda", 30.0, "L", "", "", "ativo", ""],
+            ["Anti Reflexo", "Detergente ácido", 20.0, "L", "", "", "ativo", ""],
+            ["Anti Reflexo", "Álcool isopropílico", 10.0, "L", "", "", "ativo", ""],
+            ["Anti Reflexo", "OTB UV-XBT", 41.0, "und", 0.067, "", "ativo", "Consumo est.: 2/mês"],
         ],
     },
     "PARAMETROS_PROCESSO": {
@@ -138,7 +129,7 @@ def _garantir_abas():
         _ws(nome)
     return True
 
-@st.cache_data(ttl=15, show_spinner=False)
+@st.cache_data(ttl=10, show_spinner=False)
 def _load(nome):
     cols = ENTIDADES[nome]["headers"]
     try:
@@ -152,9 +143,7 @@ def _load(nome):
         return df[cols].copy()
     except Exception:
         seed = ENTIDADES[nome].get("seed", [])
-        if seed:
-            return pd.DataFrame(seed, columns=cols)
-        return pd.DataFrame(columns=cols)
+        return pd.DataFrame(seed, columns=cols) if seed else pd.DataFrame(columns=cols)
 
 def _append(nome, linha):
     _ws(nome).append_row(linha, value_input_option="RAW")
@@ -186,7 +175,6 @@ def _parse_numero(v, padrao=0.0):
     if v is None or pd.isna(v): return padrao
     s = str(v).strip().replace(" ", "")
     if s.lower() in ("", "-", "nan", "none", "null"): return padrao
-    # Corrige se veio com vírgula decimal
     s = s.replace(",", ".")
     try:
         return float(s)
@@ -197,7 +185,6 @@ def _proxima_data(data_ultima, frequencia, dias_semana):
     dias_sem = str(dias_semana or "").strip().lower()
     freq = str(frequencia or "").strip().lower()
     hoje = datetime.now(FUSO_BR).date()
-    
     if dias_sem:
         alvos = set()
         for tok in re.split(r"[,;/]| e ", dias_sem):
@@ -215,25 +202,38 @@ def _proxima_data(data_ultima, frequencia, dias_semana):
     except Exception:
         return hoje + timedelta(days=7)
 
+# ---------------------------------------------------------------------------
+# TELA 1: ESTOQUE DE INSUMOS PRÁTICO (DEFINIÇÃO DIRETA + BOTÃO ZERAR)
+# ---------------------------------------------------------------------------
 def _tela_insumos(setor):
-    header_html = textwrap.dedent("""
-    <div style="background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%); border: 1px solid #334155; border-radius: 12px; padding: 14px 18px; margin-bottom: 16px;">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-            <div>
-                <h4 style="margin: 0; color: #F8FAFC; font-size: 1.05rem;">📦 Gestão de Insumos, Cobertura & Lotes</h4>
-                <p style="margin: 4px 0 0 0; color: #94A3B8; font-size: 0.8rem;">
-                    Conversão automática <b>kg ↔ gramas</b>, cálculo de <b>lotes</b> e ponto de pedido para <b>2 meses</b> (lead time de importação).
-                </p>
+    # Cabeçalho com botão para Zerar Todos os Insumos
+    col_h1, col_h2 = st.columns([3, 1])
+    with col_h1:
+        st.markdown("""
+            <div style="background: #1E293B; border: 1px solid #334155; border-radius: 10px; padding: 10px 14px; margin-bottom: 12px;">
+                <b style="color: #38BDF8; font-size: 0.95rem;">📦 Gestão Prática de Insumos & Lotes</b>
+                <div style="color: #94A3B8; font-size: 0.78rem; margin-top: 2px;">
+                    Defina o estoque real de cada item abaixo (em kg ou gramas) e use os botões rápidos de 1 clique para baixar consumo.
+                </div>
             </div>
-            <div style="text-align: right;">
-                <span style="background: rgba(239, 68, 68, 0.2); color: #FCA5A5; font-size: 0.72rem; font-weight: 800; padding: 3px 10px; border-radius: 6px; border: 1px solid rgba(239, 68, 68, 0.4);">
-                    🔴 Crítico: &lt; 60 dias (2 meses)
-                </span>
-            </div>
-        </div>
-    </div>
-    """).strip()
-    _render_html(header_html)
+        """, unsafe_allow_html=True)
+    with col_h2:
+        if st.button("🗑️ Zerar Todos os Insumos", use_container_width=True, help="Zera o estoque de todos os insumos para recomeçar o inventário limpo"):
+            try:
+                ws = _ws("INSUMOS")
+                valores = ws.get_all_values()
+                header = valores[0]
+                idx_est = header.index("estoque_atual") if "estoque_atual" in header else 2
+                updates = []
+                for i in range(2, len(valores) + 1):
+                    updates.append({"range": rowcol_to_a1(i, idx_est + 1), "values": [[0.0]]})
+                if updates:
+                    ws.batch_update(updates, value_input_option="RAW")
+                st.success("✅ Todos os insumos foram zerados com sucesso!")
+                st.cache_data.clear()
+                st.rerun()
+            except Exception as ex:
+                st.error(f"Erro ao zerar: {ex}")
 
     df = _load("INSUMOS")
     df = df[df["setor"].astype(str).str.strip() == setor].copy()
@@ -249,164 +249,173 @@ def _tela_insumos(setor):
         pausado = (status == "pausado")
         
         estoque_raw = _parse_numero(r["estoque_atual"])
-        consumo_raw = _parse_numero(r["consumo_dia_calculado"])
-        gramas_lote_raw = _parse_numero(r.get("gramas_por_lote", 0.0))
         obs_raw = str(r.get("observacao", "")).strip()
 
-        # Aplica dados técnicos padrão se na planilha veio corrompido ou zerado
+        # Dados técnicos garantidos
         if nome_key in DADOS_TECNICOS_INSUMOS:
             tec = DADOS_TECNICOS_INSUMOS[nome_key]
             unidade = tec["unidade"]
-            # Se o consumo na planilha for 0 ou integer multiplicado por 100
-            if consumo_raw <= 0 or (tec["consumo_dia"] < 1.0 and consumo_raw >= 1.0 and consumo_raw != tec["consumo_dia"]):
-                consumo_dia = tec["consumo_dia"]
-            else:
-                consumo_dia = consumo_raw
+            consumo_dia = tec["consumo_dia"]
             gramas_lote = tec["gramas_lote"]
             obs = tec["obs"] if not obs_raw or obs_raw == "a preencher" else obs_raw
         else:
-            consumo_dia = consumo_raw
-            gramas_lote = gramas_lote_raw
+            consumo_dia = _parse_numero(r.get("consumo_dia_calculado", 0.0))
+            gramas_lote = _parse_numero(r.get("gramas_por_lote", 0.0))
             obs = obs_raw
 
-        # Se estoque em kg for maior que 100 e for um insumo que usamos em kg, verifica se o usuário preencheu em gramas (ex: 389g)
-        estoque_val = estoque_raw
-        if unidade == "kg" and estoque_val > 50.0 and nome_key in ["zircônio", "zirconio", "cromo silício", "cromo silicio", "ito"]:
-            # Se alguém digitou 389, na verdade são 389 gramas = 0.389 kg
-            estoque_kg = estoque_val / 1000.0
-            estoque_g = estoque_val
+        # Se alguém digitou um valor absurdo de milhares, sanitiza para o valor real
+        if unidade == "kg" and estoque_raw > 1000.0:
+            estoque_kg = 0.0
+            estoque_g = 0.0
         elif unidade == "kg":
-            estoque_kg = estoque_val
-            estoque_g = estoque_val * 1000.0
+            estoque_kg = estoque_raw
+            estoque_g = estoque_raw * 1000.0
         else:
-            estoque_kg = None
-            estoque_g = None
+            estoque_kg = estoque_raw
+            estoque_g = 0.0
 
         if unidade == "kg":
             dias_cobertura = (estoque_kg / consumo_dia) if (consumo_dia > 0 and not pausado) else None
             lotes_totais = (estoque_g / gramas_lote) if (gramas_lote > 0 and not pausado) else None
-
             meta_3m_kg = consumo_dia * 90.0 if consumo_dia > 0 else None
             meta_6m_kg = consumo_dia * 180.0 if consumo_dia > 0 else None
             meta_12m_kg = consumo_dia * 365.0 if consumo_dia > 0 else None
-            
             meta_3m_lotes = (meta_3m_kg * 1000.0 / gramas_lote) if (meta_3m_kg and gramas_lote > 0) else None
             meta_6m_lotes = (meta_6m_kg * 1000.0 / gramas_lote) if (meta_6m_kg and gramas_lote > 0) else None
             meta_12m_lotes = (meta_12m_kg * 1000.0 / gramas_lote) if (meta_12m_kg and gramas_lote > 0) else None
-            
-            txt_estoque_principal = f"{estoque_kg:,.3f} kg".replace(",", "X").replace(".", ",").replace("X", ".")
+            txt_estoque_principal = f"{estoque_kg:,.2f} kg".replace(",", "X").replace(".", ",").replace("X", ".")
             txt_estoque_secundario = f"({estoque_g:,.0f} g)".replace(",", ".")
         else:
-            dias_cobertura = (estoque_val / consumo_dia) if (consumo_dia > 0 and not pausado) else None
+            dias_cobertura = (estoque_raw / consumo_dia) if (consumo_dia > 0 and not pausado) else None
             lotes_totais = None
             meta_3m_kg = consumo_dia * 90.0 if consumo_dia > 0 else None
             meta_6m_kg = consumo_dia * 180.0 if consumo_dia > 0 else None
             meta_12m_kg = consumo_dia * 365.0 if consumo_dia > 0 else None
             meta_3m_lotes = meta_6m_lotes = meta_12m_lotes = None
-            txt_estoque_principal = f"{estoque_val:g} {unidade.upper()}"
+            txt_estoque_principal = f"{estoque_raw:g} {unidade.upper()}"
             txt_estoque_secundario = ""
 
+        # Status da barra
         if pausado:
-            cor, txt_status_barra, pct_barra, cor_fundo_barra = "#64748B", "⏸️ Processo Pausado", 100.0, "#334155"
+            cor, txt_status_barra, pct_barra = "#64748B", "⏸️ Processo Pausado", 100.0
         elif dias_cobertura is None:
-            cor, txt_status_barra, pct_barra, cor_fundo_barra = "#64748B", "Consumo diário a definir", 100.0, "#334155"
+            cor, txt_status_barra, pct_barra = "#64748B", "Consumo diário a definir", 100.0
         elif dias_cobertura < COBERTURA_VERMELHA:
-            cor, txt_status_barra = "#EF4444", f"🔴 {dias_cobertura:.0f} dias — CRÍTICO (< 2 meses para chegar!)"
+            cor, txt_status_barra = "#EF4444", f"🔴 {dias_cobertura:.0f} dias — CRÍTICO (< 2 meses de importação!)"
             pct_barra = max(5.0, min(100.0, (dias_cobertura / COBERTURA_VERMELHA) * 50.0))
-            cor_fundo_barra = "#EF4444"
         elif dias_cobertura < COBERTURA_AMARELA:
             cor, txt_status_barra = "#F59E0B", f"🟡 {dias_cobertura:.0f} dias — ATENÇÃO (Ponto de Compra)"
             pct_barra = 50.0 + ((dias_cobertura - 60) / 60.0) * 35.0
-            cor_fundo_barra = "#F59E0B"
         else:
             cor, txt_status_barra = "#22C55E", f"🟢 {dias_cobertura:.0f} dias — SEGURO (> 4 meses garantidos)"
-            pct_barra, cor_fundo_barra = 100.0, "#22C55E"
+            pct_barra = 100.0
 
         txt_lotes_str = f" &bull; 🎯 <b>{lotes_totais:,.0f} lotes</b>".replace(",", ".") if lotes_totais else ""
         txt_dias_str = f"⏳ <b>{dias_cobertura:.0f} dias</b>" if dias_cobertura else ""
-        tag_pausado = '<span style="background: rgba(100, 116, 139, 0.3); color: #94A3B8; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px;">Pausado</span>' if pausado else ''
 
-        card_html = textwrap.dedent(f"""
-<div style="background-color: #1E293B; border: 1px solid #334155; border-left: 5px solid {cor}; border-radius: 12px; padding: 14px 16px; margin-bottom: 8px;">
-    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-        <div>
-            <div style="display: flex; align-items: center; gap: 8px;">
-                <span style="font-size: 1.1rem; font-weight: 800; color: #F8FAFC;">{nome}</span>
-                <span style="background: rgba(148, 163, 184, 0.15); color: #CBD5E1; font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 6px;">{unidade.upper()}</span>
-                {tag_pausado}
+        # Card Visual Compacto
+        st.markdown(f"""
+            <div style="background-color: #1E293B; border: 1px solid #334155; border-left: 5px solid {cor}; border-radius: 10px; padding: 12px 16px; margin-top: 10px;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                    <div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="font-size: 1.1rem; font-weight: 800; color: #F8FAFC;">{nome}</span>
+                            <span style="background: rgba(56, 189, 248, 0.15); color: #38BDF8; font-size: 0.72rem; font-weight: 800; padding: 2px 6px; border-radius: 4px;">{unidade.upper()}</span>
+                            {f'<span style=\"background: #334155; color: #94A3B8; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px;\">Pausado</span>' if pausado else ''}
+                        </div>
+                        <div style="color: #94A3B8; font-size: 0.75rem; margin-top: 2px;">{obs}</div>
+                    </div>
+                    <div style="text-align: right;">
+                        <div style="color: {cor}; font-size: 1.3rem; font-weight: 800;">
+                            {txt_estoque_principal} <span style="color: #94A3B8; font-size: 0.8rem;">{txt_estoque_secundario}</span>
+                        </div>
+                        <div style="color: #CBD5E1; font-size: 0.8rem;">
+                            {txt_dias_str} {txt_lotes_str}
+                        </div>
+                    </div>
+                </div>
+                <div style="margin: 8px 0 4px 0;">
+                    <div style="display: flex; justify-content: space-between; font-size: 0.72rem; color: #94A3B8; margin-bottom: 2px;">
+                        <span>Cobertura de Produção</span>
+                        <span style="color: {cor}; font-weight: 700;">{txt_status_barra}</span>
+                    </div>
+                    <div style="background-color: #0F172A; border-radius: 6px; height: 8px; width: 100%; overflow: hidden; border: 1px solid #334155;">
+                        <div style="background-color: {cor}; width: {pct_barra:.1f}%; height: 100%; border-radius: 6px;"></div>
+                    </div>
+                </div>
             </div>
-            <div style="color: #94A3B8; font-size: 0.75rem; margin-top: 4px;">
-                {obs if obs else (f'Consumo: {consumo_dia:g} {unidade}/dia' if consumo_dia > 0 else '')}
-            </div>
-        </div>
-        <div style="text-align: right;">
-            <div style="color: {cor}; font-size: 1.25rem; font-weight: 800;">
-                {txt_estoque_principal} <span style="color: #94A3B8; font-size: 0.8rem;">{txt_estoque_secundario}</span>
-            </div>
-            <div style="color: #CBD5E1; font-size: 0.8rem;">
-                {txt_dias_str} {txt_lotes_str}
-            </div>
-        </div>
-    </div>
-    <div style="margin: 10px 0 6px 0;">
-        <div style="display: flex; justify-content: space-between; font-size: 0.72rem; color: #94A3B8; margin-bottom: 3px;">
-            <span>Cobertura de Produção</span>
-            <span style="color: {cor}; font-weight: 700;">{txt_status_barra}</span>
-        </div>
-        <div style="background-color: #0F172A; border-radius: 6px; height: 10px; width: 100%; overflow: hidden; border: 1px solid #334155;">
-            <div style="background-color: {cor_fundo_barra}; width: {pct_barra:.1f}%; height: 100%; border-radius: 6px;"></div>
-        </div>
-    </div>
-</div>
-        """).strip()
-        _render_html(card_html)
+        """, unsafe_allow_html=True)
 
-        with st.expander(f"⚙️ Movimentar / Ver Metas — {nome}"):
-            if meta_3m_kg:
-                col_m1, col_m2, col_m3 = st.columns(3)
-                col_m1.markdown(f"<div style='background:#0F172A; padding:8px 12px; border-radius:8px; border:1px solid #334155;'><span style='color:#94A3B8; font-size:0.75rem;'>🎯 Meta 3 Meses (90d):</span><br><b style='color:#38BDF8;'>{meta_3m_kg:,.2f} {unidade}</b> {f'<span style=\"color:#64748B; font-size:0.75rem;\">({meta_3m_lotes:,.0f} lotes)</span>' if meta_3m_lotes else ''}</div>".replace(",", "X").replace(".", ",").replace("X", "."), unsafe_allow_html=True)
-                col_m2.markdown(f"<div style='background:#0F172A; padding:8px 12px; border-radius:8px; border:1px solid #334155;'><span style='color:#94A3B8; font-size:0.75rem;'>🎯 Meta 6 Meses (180d):</span><br><b style='color:#38BDF8;'>{meta_6m_kg:,.2f} {unidade}</b> {f'<span style=\"color:#64748B; font-size:0.75rem;\">({meta_6m_lotes:,.0f} lotes)</span>' if meta_6m_lotes else ''}</div>".replace(",", "X").replace(".", ",").replace("X", "."), unsafe_allow_html=True)
-                col_m3.markdown(f"<div style='background:#0F172A; padding:8px 12px; border-radius:8px; border:1px solid #334155;'><span style='color:#94A3B8; font-size:0.75rem;'>🎯 Meta 12 Meses (365d):</span><br><b style='color:#38BDF8;'>{meta_12m_kg:,.2f} {unidade}</b> {f'<span style=\"color:#64748B; font-size:0.75rem;\">({meta_12m_lotes:,.0f} lotes)</span>' if meta_12m_lotes else ''}</div>".replace(",", "X").replace(".", ",").replace("X", "."), unsafe_allow_html=True)
+        # Barra de Ações Práticas do Insumo (Sem expander, tudo direto!)
+        col_act_esq, col_act_dir = st.columns([1, 1])
 
-            col_act1, col_act2 = st.columns(2)
-            with col_act1:
-                st.markdown("##### 📤 Baixa de Consumo")
-                sugestao_baixa = gramas_lote if (unidade == "kg" and gramas_lote > 0) else 1.0
-                un_baixa = "gramas (g)" if unidade == "kg" else unidade
-                qtd_baixa = st.number_input(f"Quantidade a retirar ({un_baixa})", min_value=0.0, value=float(sugestao_baixa), step=1.0, key=f"bx_{nome}")
-                if st.button(f"Confirmar Baixa ({nome})", key=f"btn_bx_{nome}"):
-                    if qtd_baixa > 0:
-                        qtd_reduzir_oficial = (qtd_baixa / 1000.0) if unidade == "kg" else qtd_baixa
-                        saldo_base_kg = estoque_kg if unidade == "kg" else estoque_val
-                        novo_saldo = max(0.0, saldo_base_kg - qtd_reduzir_oficial)
-                        _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": novo_saldo})
-                        _append("HISTORICO_REPOSICAO", [setor, nome, "BAIXA_CONSUMO", datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S"), -qtd_baixa, un_baixa, novo_saldo])
-                        st.success(f"✅ Baixa de {qtd_baixa} {un_baixa} realizada! Novo saldo: {novo_saldo:.3f} {unidade}.")
+        # Ação Esquerda: Baixa Rápida de 1 Clique
+        with col_act_esq:
+            if nome_key in ["zircônio", "zirconio"]:
+                b1, b2 = st.columns(2)
+                with b1:
+                    if st.button("📤 - 1 Pastilha (6g / 2 lotes)", key=f"bx1_{nome}", use_container_width=True):
+                        novo_s = max(0.0, estoque_kg - 0.006)
+                        _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": novo_s})
+                        _append("HISTORICO_REPOSICAO", [setor, nome, "BAIXA_PASTILHA", datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S"), -6.0, "g", novo_s])
+                        st.success(f"Baixa de 6g de {nome} registrada! Novo saldo: {novo_s:.3f} kg")
                         st.cache_data.clear()
                         st.rerun()
-
-            with col_act2:
-                st.markdown("##### 📥 Entrada de Material")
-                tipo_un_entrada = st.radio("Unidade da Entrada:", ["kg", "gramas (g)"] if unidade == "kg" else [unidade], horizontal=True, key=f"rad_{nome}")
-                qtd_entrada = st.number_input(f"Quantidade recebida ({tipo_un_entrada})", min_value=0.0, value=0.0, step=1.0, key=f"ent_{nome}")
-                if st.button(f"Registrar Entrada ({nome})", key=f"btn_ent_{nome}"):
-                    if qtd_entrada > 0:
-                        qtd_adicionar_oficial = (qtd_entrada / 1000.0) if tipo_un_entrada == "gramas (g)" else qtd_entrada
-                        saldo_base_kg = estoque_kg if unidade == "kg" else estoque_val
-                        novo_saldo = saldo_base_kg + qtd_adicionar_oficial
-                        _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": novo_saldo})
-                        _append("HISTORICO_REPOSICAO", [setor, nome, "ENTRADA_COMPRA", datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S"), qtd_entrada, tipo_un_entrada, novo_saldo])
-                        st.success(f"✅ Entrada de {qtd_entrada} {tipo_un_entrada} registrada! Novo saldo: {novo_saldo:.3f} {unidade}.")
+                with b2:
+                    if st.button("📤 - 2 Pastilhas (12g)", key=f"bx2_{nome}", use_container_width=True):
+                        novo_s = max(0.0, estoque_kg - 0.012)
+                        _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": novo_s})
+                        _append("HISTORICO_REPOSICAO", [setor, nome, "BAIXA_2PASTILHAS", datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S"), -12.0, "g", novo_s])
+                        st.success(f"Baixa de 12g de {nome} registrada! Novo saldo: {novo_s:.3f} kg")
                         st.cache_data.clear()
                         st.rerun()
+            elif nome_key in ["silício", "silicio"]:
+                if st.button("📤 - 1 Lote (5g)", key=f"bx1_{nome}", use_container_width=True):
+                    novo_s = max(0.0, estoque_kg - 0.005)
+                    _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": novo_s})
+                    _append("HISTORICO_REPOSICAO", [setor, nome, "BAIXA_LOTE", datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S"), -5.0, "g", novo_s])
+                    st.success(f"Baixa de 5g de {nome} registrada! Novo saldo: {novo_s:.3f} kg")
+                    st.cache_data.clear()
+                    st.rerun()
+            elif nome_key in ["cromo silício", "cromo silicio"]:
+                if st.button("📤 - 1 Troca (2,5g)", key=f"bx1_{nome}", use_container_width=True):
+                    novo_s = max(0.0, estoque_kg - 0.0025)
+                    _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": novo_s})
+                    _append("HISTORICO_REPOSICAO", [setor, nome, "BAIXA_TROCA", datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S"), -2.5, "g", novo_s])
+                    st.success(f"Baixa de 2,5g de {nome} registrada! Novo saldo: {novo_s:.3f} kg")
+                    st.cache_data.clear()
+                    st.rerun()
+            else:
+                st.caption(f"Consumo diário: {consumo_dia:g} {unidade}/dia")
 
+        # Ação Direita: Definir Estoque Real Direto
+        with col_act_dir:
+            f_col1, f_col2, f_col3 = st.columns([2, 1, 2])
+            with f_col1:
+                val_sug = float(estoque_kg) if unidade == "kg" else float(estoque_raw)
+                val_direto = st.number_input(f"Estoque Real", min_value=0.0, value=val_sug, step=0.1, key=f"num_real_{nome}", label_visibility="collapsed")
+            with f_col2:
+                un_escolhida = st.selectbox("Unidade", ["kg", "g"] if unidade == "kg" else [unidade], key=f"sel_un_{nome}", label_visibility="collapsed")
+            with f_col3:
+                if st.button("💾 Gravar", key=f"btn_set_{nome}", use_container_width=True):
+                    valor_final_oficial = (val_direto / 1000.0) if un_escolhida == "g" else val_direto
+                    _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": valor_final_oficial})
+                    st.success(f"Estoque de {nome} atualizado para {valor_final_oficial:g} {unidade}!")
+                    st.cache_data.clear()
+                    st.rerun()
+
+        st.markdown("<hr style='margin: 6px 0; border-color: #334155;'>", unsafe_allow_html=True)
+
+# ---------------------------------------------------------------------------
+# TELA 2: CONTROLE DE PROCESSO (VERNIZ & PRIME)
+# ---------------------------------------------------------------------------
 def _tela_processo(setor):
     st.markdown("""
-        <div style="background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%); border: 1px solid #334155; border-radius: 12px; padding: 14px 18px; margin-bottom: 16px;">
-            <h4 style="margin: 0; color: #F8FAFC; font-size: 1.05rem;">🧪 Controle de Processo — Verniz & Prime</h4>
-            <p style="margin: 4px 0 0 0; color: #94A3B8; font-size: 0.8rem;">
-                Cálculo do <b>Teor de Sólidos Secos (%)</b> por pesagem analítica (Cadinho G, Amostra H e Seco I), Temperatura e Espessura.
-            </p>
+        <div style="background: #1E293B; border: 1px solid #334155; border-radius: 10px; padding: 10px 16px; margin-bottom: 12px;">
+            <b style="color: #38BDF8; font-size: 0.95rem;">🧪 Controle de Processo Analítico</b>
+            <div style="color: #94A3B8; font-size: 0.78rem; margin-top: 2px;">
+                Cálculo instantâneo pela fórmula da balança: <b>Teor (%) = [(I - G) / (H - G)] × 100</b>
+            </div>
         </div>
     """, unsafe_allow_html=True)
 
@@ -414,117 +423,93 @@ def _tela_processo(setor):
 
     with col_verniz:
         st.markdown("""
-            <div style="background: #1E293B; border: 1px solid #334155; border-top: 4px solid #38BDF8; border-radius: 12px; padding: 14px; margin-bottom: 10px;">
+            <div style="background: #1E293B; border: 1px solid #334155; border-top: 4px solid #38BDF8; border-radius: 10px; padding: 12px; margin-bottom: 8px;">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <b style="color: #38BDF8; font-size: 1.05rem;">🧪 VERNIZ</b>
-                    <span style="color: #94A3B8; font-size: 0.72rem;">Faixas: 33-38% | 10-15°C | 2.5-3.5 μm</span>
+                    <span style="color: #94A3B8; font-size: 0.72rem;">33-38% | 10-15°C | 2.5-3.5 μm</span>
                 </div>
             </div>
         """, unsafe_allow_html=True)
 
         with st.form("form_verniz"):
-            st.markdown("<span style='color:#38BDF8; font-weight:700; font-size:0.8rem;'>⚖️ Pesagem Balança Analítica</span>", unsafe_allow_html=True)
             vg_col, vh_col, vi_col = st.columns(3)
-            with vg_col:
-                v_g = st.number_input("Cadinho (G) [g]", value=1.11, step=0.01, format="%.2f", key="v_g")
-            with vh_col:
-                v_h = st.number_input("+ Amostra (H) [g]", value=3.11, step=0.01, format="%.2f", key="v_h")
-            with vi_col:
-                v_i = st.number_input("Seco Estufa (I) [g]", value=1.87, step=0.01, format="%.2f", key="v_i")
+            with vg_col: v_g = st.number_input("Cadinho (G) [g]", value=1.11, step=0.01, format="%.2f", key="v_g")
+            with vh_col: v_h = st.number_input("+ Amostra (H) [g]", value=3.11, step=0.01, format="%.2f", key="v_h")
+            with vi_col: v_i = st.number_input("Seco Estufa (I) [g]", value=1.87, step=0.01, format="%.2f", key="v_i")
 
-            if (v_h - v_g) > 0:
-                v_teor = ((v_i - v_g) / (v_h - v_g)) * 100.0
-            else:
-                v_teor = 0.0
-
+            v_teor = (((v_i - v_g) / (v_h - v_g)) * 100.0) if (v_h - v_g) > 0 else 0.0
             if 33.0 <= v_teor <= 38.0:
-                v_status_teor, v_cor_teor, v_acao_sugerida = "🟢 Conforme", "#4ADE80", "Nenhum ajuste necessário."
+                v_cor, v_status, v_sug = "#4ADE80", "🟢 Conforme", "Parâmetros normais."
             elif v_teor > 38.0:
-                v_status_teor, v_cor_teor, v_acao_sugerida = "🔴 Alto", "#F87171", "Diluir com álcool isopropílico."
+                v_cor, v_status, v_sug = "#F87171", "🔴 Alto", "Diluir com álcool isopropílico."
             else:
-                v_status_teor, v_cor_teor, v_acao_sugerida = "🟡 Baixo", "#FBBF24", "Completar com verniz concentrado."
+                v_cor, v_status, v_sug = "#FBBF24", "🟡 Baixo", "Completar com verniz concentrado."
 
             st.markdown(f"""
-                <div style="background: #0F172A; border: 1px solid #334155; border-radius: 8px; padding: 8px 12px; margin: 8px 0; display: flex; justify-content: space-between; align-items: center;">
-                    <span style="font-size: 0.8rem; color: #CBD5E1;">Teor de Sólidos Secos:</span>
-                    <b style="color: {v_cor_teor}; font-size: 1.15rem;">{v_teor:.2f}% ({v_status_teor})</b>
+                <div style="background: #0F172A; border: 1px solid #334155; border-radius: 6px; padding: 6px 12px; margin: 6px 0; display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-size: 0.8rem; color: #CBD5E1;">Teor Calculado:</span>
+                    <b style="color: {v_cor}; font-size: 1.15rem;">{v_teor:.2f}% ({v_status})</b>
                 </div>
             """, unsafe_allow_html=True)
 
-            v_col_t, v_col_e = st.columns(2)
-            with v_col_t:
-                v_temp = st.number_input("Temperatura (°C)", value=12.5, step=0.1, key="v_temp", help="Meta: 10 a 15 °C")
-            with v_col_e:
-                v_esp = st.number_input("Espessura (μm)", value=3.0, step=0.1, key="v_esp", help="Meta: 2.5 a 3.5 μm")
+            vt_col, ve_col = st.columns(2)
+            with vt_col: v_temp = st.number_input("Temperatura (°C)", value=12.5, step=0.1, key="v_temp")
+            with ve_col: v_esp = st.number_input("Espessura (μm)", value=3.0, step=0.1, key="v_esp")
 
-            v_acao = st.text_input("Ação realizada / Como foi completado:", value=v_acao_sugerida, key="v_acao")
-
-            submit_verniz = st.form_submit_button("💾 Salvar Medição do Verniz", use_container_width=True)
-            if submit_verniz:
-                status_geral = "🟢 Conforme" if (33.0 <= v_teor <= 38.0 and 10.0 <= v_temp <= 15.0 and 2.5 <= v_esp <= 3.5) else "🔴 Fora da Faixa"
+            v_acao = st.text_input("Como foi completado / Ação:", value=v_sug, key="v_acao")
+            if st.form_submit_button("💾 Salvar Medição Verniz", use_container_width=True):
+                st_ok = "🟢 Conforme" if (33.0 <= v_teor <= 38.0 and 10.0 <= v_temp <= 15.0 and 2.5 <= v_esp <= 3.5) else "🔴 Fora da Faixa"
                 _append("MEDICOES_PROCESSO", [
                     datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S"),
-                    setor, "Verniz", v_g, v_h, v_i, f"{v_teor:.2f}", v_temp, v_esp, status_geral, v_acao
+                    setor, "Verniz", v_g, v_h, v_i, f"{v_teor:.2f}", v_temp, v_esp, st_ok, v_acao
                 ])
-                st.success(f"✅ Medição do Verniz registrada! ({v_teor:.2f}%)")
+                st.success(f"✅ Medição do Verniz gravada ({v_teor:.2f}%)!")
                 st.cache_data.clear()
                 st.rerun()
 
     with col_prime:
         st.markdown("""
-            <div style="background: #1E293B; border: 1px solid #334155; border-top: 4px solid #C084FC; border-radius: 12px; padding: 14px; margin-bottom: 10px;">
+            <div style="background: #1E293B; border: 1px solid #334155; border-top: 4px solid #C084FC; border-radius: 10px; padding: 12px; margin-bottom: 8px;">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <b style="color: #C084FC; font-size: 1.05rem;">🧪 PRIME</b>
-                    <span style="color: #94A3B8; font-size: 0.72rem;">Faixas: 5,5-7,5% | 20-25°C | 0.5-1.0 μm</span>
+                    <span style="color: #94A3B8; font-size: 0.72rem;">5,5-7,5% | 20-25°C | 0.5-1.0 μm</span>
                 </div>
             </div>
         """, unsafe_allow_html=True)
 
         with st.form("form_prime"):
-            st.markdown("<span style='color:#C084FC; font-weight:700; font-size:0.8rem;'>⚖️ Pesagem Balança Analítica</span>", unsafe_allow_html=True)
             pg_col, ph_col, pi_col = st.columns(3)
-            with pg_col:
-                p_g = st.number_input("Cadinho (G) [g]", value=1.13, step=0.01, format="%.2f", key="p_g")
-            with ph_col:
-                p_h = st.number_input("+ Amostra (H) [g]", value=3.13, step=0.01, format="%.2f", key="p_h")
-            with pi_col:
-                p_i = st.number_input("Seco Estufa (I) [g]", value=1.26, step=0.01, format="%.2f", key="p_i")
+            with pg_col: p_g = st.number_input("Cadinho (G) [g]", value=1.13, step=0.01, format="%.2f", key="p_g")
+            with ph_col: p_h = st.number_input("+ Amostra (H) [g]", value=3.13, step=0.01, format="%.2f", key="p_h")
+            with pi_col: p_i = st.number_input("Seco Estufa (I) [g]", value=1.26, step=0.01, format="%.2f", key="p_i")
 
-            if (p_h - p_g) > 0:
-                p_teor = ((p_i - p_g) / (p_h - p_g)) * 100.0
-            else:
-                p_teor = 0.0
-
+            p_teor = (((p_i - p_g) / (p_h - p_g)) * 100.0) if (p_h - p_g) > 0 else 0.0
             if 5.5 <= p_teor <= 7.5:
-                p_status_teor, p_cor_teor, p_acao_sugerida = "🟢 Conforme", "#4ADE80", "Nenhum ajuste necessário."
+                p_cor, p_status, p_sug = "#4ADE80", "🟢 Conforme", "Parâmetros normais."
             elif p_teor > 7.5:
-                p_status_teor, p_cor_teor, p_acao_sugerida = "🔴 Alto", "#F87171", "Diluir com água D.I."
+                p_cor, p_status, p_sug = "#F87171", "🔴 Alto", "Diluir com água D.I."
             else:
-                p_status_teor, p_cor_teor, p_acao_sugerida = "🟡 Baixo", "#FBBF24", "Completar com Prime concentrado."
+                p_cor, p_status, p_sug = "#FBBF24", "🟡 Baixo", "Completar com Prime concentrado."
 
             st.markdown(f"""
-                <div style="background: #0F172A; border: 1px solid #334155; border-radius: 8px; padding: 8px 12px; margin: 8px 0; display: flex; justify-content: space-between; align-items: center;">
-                    <span style="font-size: 0.8rem; color: #CBD5E1;">Teor de Sólidos Secos:</span>
-                    <b style="color: {p_cor_teor}; font-size: 1.15rem;">{p_teor:.2f}% ({p_status_teor})</b>
+                <div style="background: #0F172A; border: 1px solid #334155; border-radius: 6px; padding: 6px 12px; margin: 6px 0; display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-size: 0.8rem; color: #CBD5E1;">Teor Calculado:</span>
+                    <b style="color: {p_cor}; font-size: 1.15rem;">{p_teor:.2f}% ({p_status})</b>
                 </div>
             """, unsafe_allow_html=True)
 
-            p_col_t, p_col_e = st.columns(2)
-            with p_col_t:
-                p_temp = st.number_input("Temperatura (°C)", value=22.5, step=0.1, key="p_temp", help="Meta: 20 a 25 °C")
-            with p_col_e:
-                p_esp = st.number_input("Espessura (μm)", value=0.8, step=0.1, key="p_esp", help="Meta: 0.5 a 1.0 μm")
+            pt_col, pe_col = st.columns(2)
+            with pt_col: p_temp = st.number_input("Temperatura (°C)", value=22.5, step=0.1, key="p_temp")
+            with pe_col: p_esp = st.number_input("Espessura (μm)", value=0.8, step=0.1, key="p_esp")
 
-            p_acao = st.text_input("Ação realizada / Como foi completado:", value=p_acao_sugerida, key="p_acao")
-
-            submit_prime = st.form_submit_button("💾 Salvar Medição do Prime", use_container_width=True)
-            if submit_prime:
-                status_geral = "🟢 Conforme" if (5.5 <= p_teor <= 7.5 and 20.0 <= p_temp <= 25.0 and 0.5 <= p_esp <= 1.0) else "🔴 Fora da Faixa"
+            p_acao = st.text_input("Como foi completado / Ação:", value=p_sug, key="p_acao")
+            if st.form_submit_button("💾 Salvar Medição Prime", use_container_width=True):
+                st_ok = "🟢 Conforme" if (5.5 <= p_teor <= 7.5 and 20.0 <= p_temp <= 25.0 and 0.5 <= p_esp <= 1.0) else "🔴 Fora da Faixa"
                 _append("MEDICOES_PROCESSO", [
                     datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S"),
-                    setor, "Prime", p_g, p_h, p_i, f"{p_teor:.2f}", p_temp, p_esp, status_geral, p_acao
+                    setor, "Prime", p_g, p_h, p_i, f"{p_teor:.2f}", p_temp, p_esp, st_ok, p_acao
                 ])
-                st.success(f"✅ Medição do Prime registrada! ({p_teor:.2f}%)")
+                st.success(f"✅ Medição do Prime gravada ({p_teor:.2f}%)!")
                 st.cache_data.clear()
                 st.rerun()
 
@@ -537,39 +522,26 @@ def _tela_processo(setor):
             st.dataframe(df_med_setor, use_container_width=True, hide_index=True)
         else:
             st.caption("Nenhuma medição registrada ainda para este setor.")
-    else:
-        st.caption("Nenhuma medição registrada ainda.")
 
+# ---------------------------------------------------------------------------
+# TELA 3: LIMPEZA, FILTROS & CONSUMÍVEIS
+# ---------------------------------------------------------------------------
 def _tela_limpeza(setor):
-    col_l1, col_l2 = st.columns(2)
-
-    with col_l1:
+    c_limp, c_cons = st.columns(2)
+    with c_limp:
         st.markdown("##### 🧹 Rotinas de Limpeza & Troca de Filtros")
         df_rot = _load("ROTINA_LIMPEZA")
         df_rot = df_rot[df_rot["setor"].astype(str).str.strip() == setor]
         if not df_rot.empty:
             for _, r in df_rot.iterrows():
-                maq = str(r["maquina"]).strip()
-                tipo = str(r["tipo"]).strip()
-                freq = str(r["frequencia"]).strip()
-                dias_sem = str(r["dias_semana"]).strip()
-                dt_ult = str(r.get("data_ultima_execucao", "")).strip()
-                prox = _proxima_data(dt_ult, freq, dias_sem)
-                prox_str = prox.strftime("%d/%m/%Y")
-
-                st.markdown(f"""
-                    <div style="background: #1E293B; border: 1px solid #334155; border-left: 4px solid #22C55E; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
-                        <div>
-                            <b style="color: #F8FAFC; font-size: 0.85rem;">{maq}: {tipo}</b>
-                            <div style="color: #94A3B8; font-size: 0.72rem;">Frequência: {freq} {f'({dias_sem})' if dias_sem else ''} &bull; Próxima: {prox_str}</div>
-                        </div>
-                    </div>
-                """, unsafe_allow_html=True)
-                if st.button(f"✅ Feito hoje ({maq} - {tipo})", key=f"rot_{maq}_{tipo}"):
-                    _atualizar("ROTINA_LIMPEZA", {"setor": setor, "maquina": maq, "tipo": tipo}, {
-                        "data_ultima_execucao": HOJE_STR, "proxima_data": prox_str
-                    })
-                    st.success(f"Rotina de {tipo} na {maq} realizada!")
+                maq, tipo, freq = str(r["maquina"]).strip(), str(r["tipo"]).strip(), str(r["frequencia"]).strip()
+                dias_sem, dt_ult = str(r["dias_semana"]).strip(), str(r.get("data_ultima_execucao", "")).strip()
+                prox_str = _proxima_data(dt_ult, freq, dias_sem).strftime("%d/%m/%Y")
+                col_r1, col_r2 = st.columns([3, 1])
+                col_r1.markdown(f"**{maq}: {tipo}** ({freq}) &bull; Próxima: `{prox_str}`")
+                if col_r2.button("✅ Feito", key=f"r_{maq}_{tipo}"):
+                    _atualizar("ROTINA_LIMPEZA", {"setor": setor, "maquina": maq, "tipo": tipo}, {"data_ultima_execucao": HOJE_STR, "proxima_data": prox_str})
+                    st.success("Registrado!")
                     st.cache_data.clear()
                     st.rerun()
 
@@ -578,31 +550,18 @@ def _tela_limpeza(setor):
         df_fil = df_fil[df_fil["setor"].astype(str).str.strip() == setor]
         if not df_fil.empty:
             for _, r in df_fil.iterrows():
-                nome_f = str(r["nome"]).strip()
-                maq_f = str(r["maquina"]).strip()
-                esp_f = str(r["especificacao"]).strip()
-                freq_f = str(r["frequencia_troca"]).strip()
-                dt_ult_f = str(r.get("data_ultima_troca", "")).strip()
-                prox_f = _proxima_data(dt_ult_f, freq_f, "")
-                prox_f_str = prox_f.strftime("%d/%m/%Y")
-
-                st.markdown(f"""
-                    <div style="background: #1E293B; border: 1px solid #334155; border-left: 4px solid #F59E0B; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
-                        <div>
-                            <b style="color: #F8FAFC; font-size: 0.85rem;">{maq_f}: {nome_f} ({esp_f})</b>
-                            <div style="color: #FBBF24; font-size: 0.72rem;">Frequência: {freq_f} &bull; Próxima: {prox_f_str}</div>
-                        </div>
-                    </div>
-                """, unsafe_allow_html=True)
-                if st.button(f"🔄 Trocar filtro ({nome_f})", key=f"fil_{maq_f}_{nome_f}"):
-                    _atualizar("FILTROS", {"setor": setor, "nome": nome_f, "maquina": maq_f}, {
-                        "data_ultima_troca": HOJE_STR, "proxima_troca": prox_f_str
-                    })
-                    st.success(f"Filtro {nome_f} da {maq_f} trocado!")
+                nome_f, maq_f, esp_f = str(r["nome"]).strip(), str(r["maquina"]).strip(), str(r["especificacao"]).strip()
+                freq_f, dt_ult_f = str(r["frequencia_troca"]).strip(), str(r.get("data_ultima_troca", "")).strip()
+                prox_f_str = _proxima_data(dt_ult_f, freq_f, "").strftime("%d/%m/%Y")
+                col_f1, col_f2 = st.columns([3, 1])
+                col_f1.markdown(f"**{maq_f}: {nome_f}** ({esp_f}) &bull; Próxima: `{prox_f_str}`")
+                if col_f2.button("🔄 Trocar", key=f"f_{maq_f}_{nome_f}"):
+                    _atualizar("FILTROS", {"setor": setor, "nome": nome_f, "maquina": maq_f}, {"data_ultima_troca": HOJE_STR, "proxima_troca": prox_f_str})
+                    st.success("Filtro trocado!")
                     st.cache_data.clear()
                     st.rerun()
 
-    with col_l2:
+    with c_cons:
         st.markdown("##### ⚡ Consumíveis Críticos")
         df_con = _load("CONSUMIVEIS")
         df_con = df_con[df_con["setor"].astype(str).str.strip() == setor]
@@ -610,28 +569,14 @@ def _tela_limpeza(setor):
             for _, r in df_con.iterrows():
                 nome_c = str(r["nome"]).strip()
                 est_c = _parse_numero(r["estoque"])
-                obs_c = str(r.get("observacao", "")).strip()
-
-                cor_c = "#EF4444" if est_c <= 1 else "#38BDF8"
-                st.markdown(f"""
-                    <div style="background: #1E293B; border: 1px solid #334155; border-radius: 8px; padding: 12px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
-                        <div>
-                            <b style="color: #F8FAFC; font-size: 0.85rem;">{nome_c}</b>
-                            <div style="color: {cor_c}; font-size: 0.75rem; font-weight: 700;">Estoque atual: {est_c:g} unidade(s)</div>
-                            {f'<div style=\"color:#94A3B8; font-size:0.72rem;\">{obs_c}</div>' if obs_c else ''}
-                        </div>
-                    </div>
-                """, unsafe_allow_html=True)
-
-                col_num, col_btn = st.columns([2, 1])
-                with col_num:
-                    novo_est_c = st.number_input(f"Novo saldo ({nome_c})", min_value=0.0, value=float(est_c), step=1.0, key=f"num_con_{nome_c}", label_visibility="collapsed")
-                with col_btn:
-                    if st.button("Salvar", key=f"btn_con_{nome_c}"):
-                        _atualizar("CONSUMIVEIS", {"setor": setor, "nome": nome_c}, {"estoque": novo_est_c})
-                        st.success(f"Estoque de {nome_c} atualizado!")
-                        st.cache_data.clear()
-                        st.rerun()
+                c_a, c_b, c_c = st.columns([2, 1, 1])
+                c_a.markdown(f"**{nome_c}** (Atual: `{est_c:g}`)")
+                novo_est = c_b.number_input("Saldo", min_value=0.0, value=float(est_c), step=1.0, key=f"con_{nome_c}", label_visibility="collapsed")
+                if c_c.button("Salvar", key=f"bcon_{nome_c}"):
+                    _atualizar("CONSUMIVEIS", {"setor": setor, "nome": nome_c}, {"estoque": novo_est})
+                    st.success(f"{nome_c} salvo!")
+                    st.cache_data.clear()
+                    st.rerun()
 
 def render():
     try:
@@ -642,7 +587,6 @@ def render():
     col_t1, col_t2 = st.columns([3, 1])
     with col_t1:
         st.title("🏭 Controle de Setores")
-        st.caption("Acompanhamento de Insumos, Parâmetros Analíticos de Processo e Manutenção Periódica.")
     with col_t2:
         setor_selecionado = st.selectbox("Setor Operacional:", ["Anti Reflexo", "Surfaçagem", "Montagem", "Coloração"], index=0, key="cs_setor_topo")
 
@@ -654,9 +598,6 @@ def render():
         "🧹 Limpeza, Filtros & Consumíveis"
     ])
 
-    with tab1:
-        _tela_insumos(setor_selecionado)
-    with tab2:
-        _tela_processo(setor_selecionado)
-    with tab3:
-        _tela_limpeza(setor_selecionado)
+    with tab1: _tela_insumos(setor_selecionado)
+    with tab2: _tela_processo(setor_selecionado)
+    with tab3: _tela_limpeza(setor_selecionado)

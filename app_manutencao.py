@@ -1,4 +1,4 @@
-# Versao UI Limpa 04/09/2026 16:29:17
+# Versao Pratica 04/09/2026 16:42:04
 import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
