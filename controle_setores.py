@@ -22,6 +22,13 @@ COBERTURA_AMARELA  = 120  # 60 a 120 dias -> Atenção / Ponto de Pedido
 
 HOJE_STR = datetime.now(FUSO_BR).strftime("%d/%m/%Y")
 
+def _render_html(html_str):
+    """Remove quebras de linha do HTML para evitar que o Markdown do Streamlit interprete indentação como código"""
+    limpo = re.sub(r'>\s+<', '><', html_str.strip())
+    limpo = re.sub(r'\s*\n\s*', ' ', limpo)
+    st.markdown(limpo, unsafe_allow_html=True)
+
+
 # Dados técnicos conhecidos de consumo e lote para Anti Reflexo
 DADOS_TECNICOS_INSUMOS = {
     "zircônio":        {"consumo_dia": 0.24,    "gramas_lote": 3.0, "unidade": "kg", "obs": "Pastilha 6g a cada 2 lotes (3g/lote)"},
@@ -226,7 +233,7 @@ def _tela_insumos(setor):
         </div>
     </div>
     """).strip()
-    st.markdown(header_html, unsafe_allow_html=True)
+    _render_html(header_html)
 
     df = _load("INSUMOS")
     df = df[df["setor"].astype(str).str.strip() == setor].copy()
@@ -352,7 +359,7 @@ def _tela_insumos(setor):
     </div>
 </div>
         """).strip()
-        st.markdown(card_html, unsafe_allow_html=True)
+        _render_html(card_html)
 
         with st.expander(f"⚙️ Movimentar / Ver Metas — {nome}"):
             if meta_3m_kg:
