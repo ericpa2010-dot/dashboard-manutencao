@@ -353,21 +353,20 @@ def _tela_insumos(setor):
             msg_sla = f"🟢 {dias_cobertura:.0f} dias — SEGURO (> 4 meses garantidos)"
             progresso_pct = 1.0
 
-        # CARD NATIVO COM STREAMLIT CONTAINER
+        # CARD NATIVO - mesma densidade dos cards de SLA (Dashboard & SLA):
+        # nome+valor em 1 linha, badge+barra, 1 campo + 1 botão de salvar,
+        # ações rápidas escondidas num expander.
+        tem_acao_rapida = nome_k in ["zircônio", "zirconio", "silício", "silicio", "cromo silício", "cromo silicio"]
+
         with st.container(border=True):
-            # Linha 1: Título e Métricas
-            col_info, col_num1, col_num2 = st.columns([3, 2, 2])
-            with col_info:
-                st.subheader(f"{nome}")
-                st.caption(f"**Unidade:** {unidade.upper()} | {obs}")
-            with col_num1:
+            # Linha 1: nome + estoque atual em destaque
+            col_nome, col_valor = st.columns([3, 2])
+            with col_nome:
+                st.subheader(nome)
+                if obs:
+                    st.caption(obs)
+            with col_valor:
                 st.metric("Estoque Atual", txt_est_principal)
-            with col_num2:
-                if dias_cobertura:
-                    lotes_txt = f"{lotes_totais:,.0f} lotes" if lotes_totais else ""
-                    st.metric("Cobertura", f"{dias_cobertura:.0f} dias", lotes_txt)
-                else:
-                    st.metric("Cobertura", "—")
 
             # Linha 2: Barra de Vida - mesmo estilo (cores/card) do badge de
             # prioridade do Dashboard & SLA
@@ -377,79 +376,87 @@ def _tela_insumos(setor):
                 unsafe_allow_html=True,
             )
 
-            # Linha 3: Controles Práticos de 1 Clique e Ajuste Direto
-            c_baixa, c_ajuste = st.columns([1, 1])
-            
-            with c_baixa:
-                if nome_k in ["zircônio", "zirconio"]:
-                    b1, b2 = st.columns(2)
-                    with b1:
-                        if st.button("📤 -1 Pastilha (6g)", key=f"bx1_{nome}", use_container_width=True):
-                            novo_g = max(0, round(estoque_g - 6))
-                            _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": novo_g})
-                            st.success(f"Baixa de 6g salva! Novo saldo: {novo_g} g ({novo_g/1000:.3f} kg)")
-                            st.cache_data.clear()
-                            st.rerun()
-                    with b2:
-                        if st.button("📤 -2 Pastilhas (12g)", key=f"bx2_{nome}", use_container_width=True):
-                            novo_g = max(0, round(estoque_g - 12))
-                            _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": novo_g})
-                            st.success(f"Baixa de 12g salva! Novo saldo: {novo_g} g ({novo_g/1000:.3f} kg)")
-                            st.cache_data.clear()
-                            st.rerun()
-                elif nome_k in ["silício", "silicio"]:
-                    if st.button("📤 -1 Lote (5g)", key=f"bx1_{nome}", use_container_width=True):
-                        novo_g = max(0, round(estoque_g - 5))
-                        _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": novo_g})
-                        st.success(f"Baixa de 5g salva! Novo saldo: {novo_g} g ({novo_g/1000:.3f} kg)")
-                        st.cache_data.clear()
-                        st.rerun()
-                elif nome_k in ["cromo silício", "cromo silicio"]:
-                    if st.button("📤 -1 Troca (2,5g)", key=f"bx1_{nome}", use_container_width=True):
-                        novo_g = max(0, round(estoque_g - 2.5))
-                        _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": novo_g})
-                        st.success(f"Baixa de 2,5g salva! Novo saldo: {novo_g} g ({novo_g/1000:.3f} kg)")
-                        st.cache_data.clear()
-                        st.rerun()
-                else:
-                    st.caption(f"Consumo diário previsto: **{consumo_dia:g} {unidade}/dia**")
+            # Linha 3: ajuste direto - 1 campo + 1 botão. Insumos em kg
+            # digitam SEMPRE em gramas (sem seletor de unidade) - fecha de
+            # vez a ambiguidade kg/g que causava o bug de conversão.
+            if unidade == "kg":
+                label_campo, placeholder = "Novo estoque (g)", "Ex: 390"
+                val_base_txt = str(int(round(estoque_g)))
+            else:
+                label_campo, placeholder = f"Novo estoque ({unidade})", "Ex: 2"
+                val_base_txt = f"{estoque_raw:g}".replace(".", ",")
 
-            with c_ajuste:
-                col_inp, col_un, col_save = st.columns([2, 1, 1])
-                val_base = float(estoque_kg) if unidade == "kg" else float(estoque_raw)
-                txt_base = f"{val_base:g}".replace(".", ",")
-                with col_inp:
-                    # text_input (não number_input) porque number_input só aceita
-                    # ponto como decimal - aqui aceitamos vírgula, e ignoramos
-                    # texto solto tipo "kg"/"g" digitado junto por engano.
-                    txt_val = st.text_input(
-                        "Estoque Real", value=txt_base, key=f"inp_{nome}",
-                        label_visibility="collapsed", placeholder="Ex: 0,38",
-                    )
-                with col_un:
-                    un_sel = st.selectbox("Un", ["kg", "g"] if unidade == "kg" else [unidade], key=f"un_{nome}", label_visibility="collapsed")
-                with col_save:
-                    if st.button("💾 Salvar", key=f"btn_save_{nome}", use_container_width=True):
-                        limpo = re.sub(r"[^0-9,.\-]", "", txt_val).strip()
-                        novo_val = _parse_num(limpo, padrao=None)
-                        if novo_val is None or novo_val < 0:
-                            st.error("Valor inválido — use apenas números (ex: 0,38 ou 389).")
+            col_inp, col_save = st.columns([3, 1])
+            with col_inp:
+                # text_input (não number_input) porque number_input só aceita
+                # ponto como decimal - aqui aceitamos vírgula, e ignoramos
+                # texto solto tipo "kg"/"g" digitado junto por engano.
+                txt_val = st.text_input(
+                    label_campo, value=val_base_txt, key=f"inp_{nome}",
+                    label_visibility="collapsed", placeholder=placeholder,
+                )
+            with col_save:
+                if st.button("💾 Salvar", key=f"btn_save_{nome}", use_container_width=True):
+                    limpo = re.sub(r"[^0-9,.\-]", "", txt_val).strip()
+                    novo_val = _parse_num(limpo, padrao=None)
+                    if novo_val is None or novo_val < 0:
+                        st.error("Valor inválido — use apenas números (ex: 390 ou 2).")
+                    else:
+                        if unidade == "kg":
+                            val_gravar = int(round(novo_val))  # já digitado em gramas
+                            val_exibicao = f"{val_gravar/1000:.3f} kg ({val_gravar} g)"
+                            novo_txt_widget = str(val_gravar)
                         else:
-                            if unidade == "kg":
-                                # Blindagem: pra insumos em kg, o que vai pra planilha é
-                                # SEMPRE inteiro de gramas, nunca decimal - independente
-                                # de o usuário ter escolhido "kg" ou "g" no seletor ao
-                                # lado. Elimina de vez ponto/vírgula passando pelo Sheets.
-                                gramas = novo_val if un_sel == "g" else novo_val * 1000.0
-                                val_gravar = int(round(gramas))
-                                val_exibicao = f"{val_gravar/1000:.3f} kg ({val_gravar} g)"
-                            else:
-                                val_gravar = novo_val
-                                val_exibicao = f"{val_gravar:g} {unidade}"
-                            _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": val_gravar})
-                            st.success(f"Estoque de {nome} salvo como {val_exibicao}!")
+                            val_gravar = novo_val
+                            val_exibicao = f"{val_gravar:g} {unidade}"
+                            novo_txt_widget = f"{val_gravar:g}".replace(".", ",")
+                        _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": val_gravar})
+                        # Evita a caixa ficar "presa" mostrando o texto digitado
+                        # antes, mesmo depois de já ter salvo.
+                        st.session_state[f"inp_{nome}"] = novo_txt_widget
+                        st.success(f"Estoque de {nome} salvo como {val_exibicao}!")
+                        st.cache_data.clear()
+                        st.rerun()
+
+            # Ações rápidas - discretas, escondidas por padrão
+            if tem_acao_rapida:
+                with st.expander("▸ Ações rápidas (baixa de lote)"):
+                    if nome_k in ["zircônio", "zirconio"]:
+                        b1, b2 = st.columns(2)
+                        with b1:
+                            if st.button("📤 -1 Pastilha (6g)", key=f"bx1_{nome}"):
+                                novo_g = max(0, round(estoque_g - 6))
+                                _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": novo_g})
+                                st.session_state[f"inp_{nome}"] = str(novo_g)
+                                st.success(f"Baixa de 6g salva! Novo saldo: {novo_g} g ({novo_g/1000:.3f} kg)")
+                                st.cache_data.clear()
+                                st.rerun()
+                        with b2:
+                            if st.button("📤 -2 Pastilhas (12g)", key=f"bx2_{nome}"):
+                                novo_g = max(0, round(estoque_g - 12))
+                                _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": novo_g})
+                                st.session_state[f"inp_{nome}"] = str(novo_g)
+                                st.success(f"Baixa de 12g salva! Novo saldo: {novo_g} g ({novo_g/1000:.3f} kg)")
+                                st.cache_data.clear()
+                                st.rerun()
+                    elif nome_k in ["silício", "silicio"]:
+                        if st.button("📤 -1 Lote (5g)", key=f"bx1_{nome}"):
+                            novo_g = max(0, round(estoque_g - 5))
+                            _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": novo_g})
+                            st.session_state[f"inp_{nome}"] = str(novo_g)
+                            st.success(f"Baixa de 5g salva! Novo saldo: {novo_g} g ({novo_g/1000:.3f} kg)")
                             st.cache_data.clear()
                             st.rerun()
+                    elif nome_k in ["cromo silício", "cromo silicio"]:
+                        if st.button("📤 -1 Troca (2,5g)", key=f"bx1_{nome}"):
+                            novo_g = max(0, round(estoque_g - 2.5))
+                            _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": novo_g})
+                            st.session_state[f"inp_{nome}"] = str(novo_g)
+                            st.success(f"Baixa de 2,5g salva! Novo saldo: {novo_g} g ({novo_g/1000:.3f} kg)")
+                            st.cache_data.clear()
+                            st.rerun()
+            elif consumo_dia and consumo_dia > 0:
+                st.caption(f"Consumo diário previsto: **{consumo_dia:g} {unidade}/dia**")
 
     if linhas_projecao:
         with st.expander("📈 Projeção de Compra (3 / 6 / 12 meses)"):
