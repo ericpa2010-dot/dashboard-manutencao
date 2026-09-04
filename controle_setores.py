@@ -214,6 +214,15 @@ def _proxima_data(data_ultima, frequencia, dias_semana):
     except Exception:
         return hoje + timedelta(days=7)
 
+def _bump_inp_versao(nome):
+    """Força o text_input de estoque a virar um widget NOVO no próximo rerun
+    (troca a key, incrementando um contador à parte) em vez de escrever
+    direto em st.session_state[key do widget] - isso é proibido pelo
+    Streamlit depois que o widget já foi instanciado no mesmo ciclo do
+    script (StreamlitWidgetAlreadyInstantiatedError)."""
+    chave_versao = f"inp_{nome}_v"
+    st.session_state[chave_versao] = st.session_state.get(chave_versao, 0) + 1
+
 def _badge_sla(cor_status, titulo, valor_grande, pct_barra, rodape=""):
     """Badge + barra coloridos, mesmo padrao (textwrap.dedent().strip()) usado
     no card de prioridade do Dashboard & SLA - já comprovado sem vazar HTML."""
@@ -386,13 +395,18 @@ def _tela_insumos(setor):
                 label_campo, placeholder = f"Novo estoque ({unidade})", "Ex: 2"
                 val_base_txt = f"{estoque_raw:g}".replace(".", ",")
 
+            # Key versionada: cada salvamento incrementa o contador (via
+            # _bump_inp_versao), então o widget seguinte nasce "novo" e usa
+            # o value= recém-calculado, sem violar a regra do Streamlit de
+            # não reescrever session_state de um widget já instanciado.
+            versao_inp = st.session_state.get(f"inp_{nome}_v", 0)
             col_inp, col_save = st.columns([3, 1])
             with col_inp:
                 # text_input (não number_input) porque number_input só aceita
                 # ponto como decimal - aqui aceitamos vírgula, e ignoramos
                 # texto solto tipo "kg"/"g" digitado junto por engano.
                 txt_val = st.text_input(
-                    label_campo, value=val_base_txt, key=f"inp_{nome}",
+                    label_campo, value=val_base_txt, key=f"inp_{nome}_{versao_inp}",
                     label_visibility="collapsed", placeholder=placeholder,
                 )
             with col_save:
@@ -405,15 +419,14 @@ def _tela_insumos(setor):
                         if unidade == "kg":
                             val_gravar = int(round(novo_val))  # já digitado em gramas
                             val_exibicao = f"{val_gravar/1000:.3f} kg ({val_gravar} g)"
-                            novo_txt_widget = str(val_gravar)
                         else:
                             val_gravar = novo_val
                             val_exibicao = f"{val_gravar:g} {unidade}"
-                            novo_txt_widget = f"{val_gravar:g}".replace(".", ",")
                         _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": val_gravar})
                         # Evita a caixa ficar "presa" mostrando o texto digitado
-                        # antes, mesmo depois de já ter salvo.
-                        st.session_state[f"inp_{nome}"] = novo_txt_widget
+                        # antes, mesmo depois de já ter salvo (sem reescrever a
+                        # key do widget já instanciado - ver _bump_inp_versao).
+                        _bump_inp_versao(nome)
                         st.success(f"Estoque de {nome} salvo como {val_exibicao}!")
                         st.cache_data.clear()
                         st.rerun()
@@ -427,7 +440,7 @@ def _tela_insumos(setor):
                             if st.button("📤 -1 Pastilha (6g)", key=f"bx1_{nome}"):
                                 novo_g = max(0, round(estoque_g - 6))
                                 _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": novo_g})
-                                st.session_state[f"inp_{nome}"] = str(novo_g)
+                                _bump_inp_versao(nome)
                                 st.success(f"Baixa de 6g salva! Novo saldo: {novo_g} g ({novo_g/1000:.3f} kg)")
                                 st.cache_data.clear()
                                 st.rerun()
@@ -435,7 +448,7 @@ def _tela_insumos(setor):
                             if st.button("📤 -2 Pastilhas (12g)", key=f"bx2_{nome}"):
                                 novo_g = max(0, round(estoque_g - 12))
                                 _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": novo_g})
-                                st.session_state[f"inp_{nome}"] = str(novo_g)
+                                _bump_inp_versao(nome)
                                 st.success(f"Baixa de 12g salva! Novo saldo: {novo_g} g ({novo_g/1000:.3f} kg)")
                                 st.cache_data.clear()
                                 st.rerun()
@@ -443,7 +456,7 @@ def _tela_insumos(setor):
                         if st.button("📤 -1 Lote (5g)", key=f"bx1_{nome}"):
                             novo_g = max(0, round(estoque_g - 5))
                             _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": novo_g})
-                            st.session_state[f"inp_{nome}"] = str(novo_g)
+                            _bump_inp_versao(nome)
                             st.success(f"Baixa de 5g salva! Novo saldo: {novo_g} g ({novo_g/1000:.3f} kg)")
                             st.cache_data.clear()
                             st.rerun()
@@ -451,7 +464,7 @@ def _tela_insumos(setor):
                         if st.button("📤 -1 Troca (2,5g)", key=f"bx1_{nome}"):
                             novo_g = max(0, round(estoque_g - 2.5))
                             _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": novo_g})
-                            st.session_state[f"inp_{nome}"] = str(novo_g)
+                            _bump_inp_versao(nome)
                             st.success(f"Baixa de 2,5g salva! Novo saldo: {novo_g} g ({novo_g/1000:.3f} kg)")
                             st.cache_data.clear()
                             st.rerun()
