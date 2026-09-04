@@ -1,14 +1,10 @@
 """
-Controle de Setores - Módulo Especialista
------------------------------------------
-Organiza dados por setor (Anti Reflexo, etc.)
-1. Estoque de Insumos (kg <-> gramas, contagem de lotes, barra de 60 dias - lead time de compra, metas 3/6/12 meses)
-2. Controle de Processo (Verniz & Prime com calculadora de balança analítica, temperaturas individuais, espessura e relatório diário)
-3. Limpeza, Filtros e Consumíveis Críticos
+Controle de Setores - Módulo Especialista Corrigido
 """
 
 import re
 from datetime import datetime, timedelta
+import textwrap
 import pandas as pd
 import pytz
 import streamlit as st
@@ -20,20 +16,32 @@ from google.oauth2.service_account import Credentials
 FUSO_BR = pytz.timezone("America/Sao_Paulo")
 SETOR_PADRAO = "Anti Reflexo"
 
-COBERTURA_VERMELHA = 60   # < 60 dias -> Crítico (lead time de importação: 2 meses)
-COBERTURA_AMARELA  = 120  # 60 a 120 dias -> Ponto de Pedido / Atenção
+COBERTURA_VERMELHA = 60   # < 60 dias -> Crítico (2 meses de entrega do fornecedor)
+COBERTURA_AMARELA  = 120  # 60 a 120 dias -> Atenção / Ponto de Pedido
                           # >= 120 dias -> Verde Seguro
 
 HOJE_STR = datetime.now(FUSO_BR).strftime("%d/%m/%Y")
 
+# Dados técnicos conhecidos de consumo e lote para Anti Reflexo
+DADOS_TECNICOS_INSUMOS = {
+    "zircônio":        {"consumo_dia": 0.24,    "gramas_lote": 3.0, "unidade": "kg", "obs": "Pastilha 6g a cada 2 lotes (3g/lote)"},
+    "zirconio":        {"consumo_dia": 0.24,    "gramas_lote": 3.0, "unidade": "kg", "obs": "Pastilha 6g a cada 2 lotes (3g/lote)"},
+    "silício":         {"consumo_dia": 0.20,    "gramas_lote": 5.0, "unidade": "kg", "obs": "5g por lote (dois potes de 2,5g)"},
+    "silicio":         {"consumo_dia": 0.20,    "gramas_lote": 5.0, "unidade": "kg", "obs": "5g por lote (dois potes de 2,5g)"},
+    "cromo silício":   {"consumo_dia": 0.00071, "gramas_lote": 2.5, "unidade": "kg", "obs": "Troca 2x por semana (2,5g por troca)"},
+    "cromo silicio":   {"consumo_dia": 0.00071, "gramas_lote": 2.5, "unidade": "kg", "obs": "Troca 2x por semana (2,5g por troca)"},
+    "hidrofóbico":     {"consumo_dia": 40.0,    "gramas_lote": 0.0, "unidade": "und", "obs": "40 und/dia"},
+    "hidrofobico":     {"consumo_dia": 40.0,    "gramas_lote": 0.0, "unidade": "und", "obs": "40 und/dia"},
+    "crystal de quartz":{"consumo_dia": 2.9,    "gramas_lote": 0.0, "unidade": "und", "obs": "2,9 und/dia"},
+    "ito":             {"consumo_dia": 0.02,    "gramas_lote": 2.5, "unidade": "kg", "obs": "2,5g por lote (processo pausado)"},
+    "otb uv-xbt":      {"consumo_dia": 0.067,   "gramas_lote": 0.0, "unidade": "und", "obs": "2 und/mês"},
+}
+
 ENTIDADES = {
     "INSUMOS": {
-        "headers": [
-            "setor", "nome", "estoque_atual", "unidade", "consumo_dia_calculado",
-            "gramas_por_lote", "status", "observacao"
-        ],
+        "headers": ["setor", "nome", "estoque_atual", "unidade", "consumo_dia_calculado", "gramas_por_lote", "status", "observacao"],
         "seed": [
-            ["Anti Reflexo", "Zircônio", 0, "kg", 0.24, 3.0, "ativo", "Pastilha dupla face: 6g a cada 2 lotes (3g/lote)"],
+            ["Anti Reflexo", "Zircônio", 0, "kg", 0.24, 3.0, "ativo", "Pastilha 6g a cada 2 lotes (3g/lote)"],
             ["Anti Reflexo", "Silício", 0, "kg", 0.20, 5.0, "ativo", "5g por lote (dois recipientes de 2,5g)"],
             ["Anti Reflexo", "Cromo Silício", 0, "kg", 0.00071, 2.5, "ativo", "Troca 2x por semana (2,5g por troca)"],
             ["Anti Reflexo", "Hidrofóbico", 0, "und", 40, "", "ativo", "40 und/dia"],
@@ -49,28 +57,18 @@ ENTIDADES = {
         ],
     },
     "PARAMETROS_PROCESSO": {
-        "headers": [
-            "setor", "produto", "teor_min", "teor_max", "temp_min", "temp_max",
-            "esp_min", "esp_max", "acao_acima", "acao_abaixo"
-        ],
+        "headers": ["setor", "produto", "teor_min", "teor_max", "temp_min", "temp_max", "esp_min", "esp_max", "acao_acima", "acao_abaixo"],
         "seed": [
             ["Anti Reflexo", "Verniz", 33.0, 38.0, 10.0, 15.0, 2.5, 3.5, "diluir com álcool isopropílico", "completar com verniz concentrado"],
             ["Anti Reflexo", "Prime", 5.5, 7.5, 20.0, 25.0, 0.5, 1.0, "diluir com água D.I.", "completar com Prime concentrado"],
         ],
     },
     "MEDICOES_PROCESSO": {
-        "headers": [
-            "data_hora", "setor", "produto", "massa_cadinho_g", "massa_amostra_g",
-            "massa_seco_g", "teor_solidos_pct", "temperatura_c", "espessura_um",
-            "status_conformidade", "acao_completado"
-        ],
+        "headers": ["data_hora", "setor", "produto", "massa_cadinho_g", "massa_amostra_g", "massa_seco_g", "teor_solidos_pct", "temperatura_c", "espessura_um", "status_conformidade", "acao_completado"],
         "seed": [],
     },
     "ROTINA_LIMPEZA": {
-        "headers": [
-            "setor", "maquina", "tipo", "frequencia", "dias_semana",
-            "data_ultima_execucao", "proxima_data"
-        ],
+        "headers": ["setor", "maquina", "tipo", "frequencia", "dias_semana", "data_ultima_execucao", "proxima_data"],
         "seed": [
             ["Anti Reflexo", "SL-501", "Soda/Detergente", "semanal", "sexta", HOJE_STR, ""],
             ["Anti Reflexo", "MC-380 X-2", "Chapas + Ion Gun", "semanal", "quarta,sexta", HOJE_STR, ""],
@@ -78,10 +76,7 @@ ENTIDADES = {
         ],
     },
     "FILTROS": {
-        "headers": [
-            "setor", "nome", "maquina", "especificacao",
-            "frequencia_troca", "data_ultima_troca", "proxima_troca"
-        ],
+        "headers": ["setor", "nome", "maquina", "especificacao", "frequencia_troca", "data_ultima_troca", "proxima_troca"],
         "seed": [
             ["Anti Reflexo", "Filtro químico", "SL-501", '1µ, 5"', "quinzenal", HOJE_STR, ""],
             ["Anti Reflexo", "Filtro da máquina", "SL-501", '1µ, 10"', "mensal", HOJE_STR, ""],
@@ -180,12 +175,16 @@ def _atualizar(nome, filtros, updates):
         return True
     return False
 
-def _num(v, default=0.0):
+def _parse_numero(v, padrao=0.0):
+    if v is None or pd.isna(v): return padrao
+    s = str(v).strip().replace(" ", "")
+    if s.lower() in ("", "-", "nan", "none", "null"): return padrao
+    # Corrige se veio com vírgula decimal
+    s = s.replace(",", ".")
     try:
-        s = str(v).replace(",", ".").strip()
-        return float(s) if s.lower() not in ("", "-", "nan", "none") else default
+        return float(s)
     except (ValueError, TypeError):
-        return default
+        return padrao
 
 def _proxima_data(data_ultima, frequencia, dias_semana):
     dias_sem = str(dias_semana or "").strip().lower()
@@ -210,23 +209,24 @@ def _proxima_data(data_ultima, frequencia, dias_semana):
         return hoje + timedelta(days=7)
 
 def _tela_insumos(setor):
-    st.markdown("""
-        <div style="background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%); border: 1px solid #334155; border-radius: 12px; padding: 14px 18px; margin-bottom: 16px;">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <div>
-                    <h4 style="margin: 0; color: #F8FAFC; font-size: 1.05rem;">📦 Gestão de Insumos, Cobertura & Lotes</h4>
-                    <p style="margin: 4px 0 0 0; color: #94A3B8; font-size: 0.8rem;">
-                        Conversão automática <b>kg ↔ gramas</b>, cálculo de <b>lotes</b> e ponto de pedido para <b>2 meses</b> (tempo de entrega do fornecedor).
-                    </p>
-                </div>
-                <div style="text-align: right;">
-                    <span style="background: rgba(239, 68, 68, 0.2); color: #FCA5A5; font-size: 0.72rem; font-weight: 800; padding: 3px 10px; border-radius: 6px; border: 1px solid rgba(239, 68, 68, 0.4);">
-                        🔴 Crítico: &lt; 60 dias (2 meses)
-                    </span>
-                </div>
+    header_html = textwrap.dedent("""
+    <div style="background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%); border: 1px solid #334155; border-radius: 12px; padding: 14px 18px; margin-bottom: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <h4 style="margin: 0; color: #F8FAFC; font-size: 1.05rem;">📦 Gestão de Insumos, Cobertura & Lotes</h4>
+                <p style="margin: 4px 0 0 0; color: #94A3B8; font-size: 0.8rem;">
+                    Conversão automática <b>kg ↔ gramas</b>, cálculo de <b>lotes</b> e ponto de pedido para <b>2 meses</b> (lead time de importação).
+                </p>
+            </div>
+            <div style="text-align: right;">
+                <span style="background: rgba(239, 68, 68, 0.2); color: #FCA5A5; font-size: 0.72rem; font-weight: 800; padding: 3px 10px; border-radius: 6px; border: 1px solid rgba(239, 68, 68, 0.4);">
+                    🔴 Crítico: &lt; 60 dias (2 meses)
+                </span>
             </div>
         </div>
-    """, unsafe_allow_html=True)
+    </div>
+    """).strip()
+    st.markdown(header_html, unsafe_allow_html=True)
 
     df = _load("INSUMOS")
     df = df[df["setor"].astype(str).str.strip() == setor].copy()
@@ -236,18 +236,46 @@ def _tela_insumos(setor):
 
     for _, r in df.iterrows():
         nome = str(r["nome"]).strip()
+        nome_key = nome.lower().strip()
         unidade = str(r["unidade"]).strip().lower()
         status = str(r["status"]).strip().lower()
         pausado = (status == "pausado")
         
-        estoque_val = _num(r["estoque_atual"])
-        consumo_dia = _num(r["consumo_dia_calculado"])
-        gramas_lote = _num(r["gramas_por_lote"])
-        obs = str(r.get("observacao", "")).strip()
+        estoque_raw = _parse_numero(r["estoque_atual"])
+        consumo_raw = _parse_numero(r["consumo_dia_calculado"])
+        gramas_lote_raw = _parse_numero(r.get("gramas_por_lote", 0.0))
+        obs_raw = str(r.get("observacao", "")).strip()
 
-        if unidade == "kg":
+        # Aplica dados técnicos padrão se na planilha veio corrompido ou zerado
+        if nome_key in DADOS_TECNICOS_INSUMOS:
+            tec = DADOS_TECNICOS_INSUMOS[nome_key]
+            unidade = tec["unidade"]
+            # Se o consumo na planilha for 0 ou integer multiplicado por 100
+            if consumo_raw <= 0 or (tec["consumo_dia"] < 1.0 and consumo_raw >= 1.0 and consumo_raw != tec["consumo_dia"]):
+                consumo_dia = tec["consumo_dia"]
+            else:
+                consumo_dia = consumo_raw
+            gramas_lote = tec["gramas_lote"]
+            obs = tec["obs"] if not obs_raw or obs_raw == "a preencher" else obs_raw
+        else:
+            consumo_dia = consumo_raw
+            gramas_lote = gramas_lote_raw
+            obs = obs_raw
+
+        # Se estoque em kg for maior que 100 e for um insumo que usamos em kg, verifica se o usuário preencheu em gramas (ex: 389g)
+        estoque_val = estoque_raw
+        if unidade == "kg" and estoque_val > 50.0 and nome_key in ["zircônio", "zirconio", "cromo silício", "cromo silicio", "ito"]:
+            # Se alguém digitou 389, na verdade são 389 gramas = 0.389 kg
+            estoque_kg = estoque_val / 1000.0
+            estoque_g = estoque_val
+        elif unidade == "kg":
             estoque_kg = estoque_val
             estoque_g = estoque_val * 1000.0
+        else:
+            estoque_kg = None
+            estoque_g = None
+
+        if unidade == "kg":
             dias_cobertura = (estoque_kg / consumo_dia) if (consumo_dia > 0 and not pausado) else None
             lotes_totais = (estoque_g / gramas_lote) if (gramas_lote > 0 and not pausado) else None
 
@@ -259,10 +287,9 @@ def _tela_insumos(setor):
             meta_6m_lotes = (meta_6m_kg * 1000.0 / gramas_lote) if (meta_6m_kg and gramas_lote > 0) else None
             meta_12m_lotes = (meta_12m_kg * 1000.0 / gramas_lote) if (meta_12m_kg and gramas_lote > 0) else None
             
-            txt_estoque_principal = f"{estoque_kg:,.2f} kg".replace(",", "X").replace(".", ",").replace("X", ".")
+            txt_estoque_principal = f"{estoque_kg:,.3f} kg".replace(",", "X").replace(".", ",").replace("X", ".")
             txt_estoque_secundario = f"({estoque_g:,.0f} g)".replace(",", ".")
         else:
-            estoque_kg = None
             dias_cobertura = (estoque_val / consumo_dia) if (consumo_dia > 0 and not pausado) else None
             lotes_totais = None
             meta_3m_kg = consumo_dia * 90.0 if consumo_dia > 0 else None
@@ -290,42 +317,42 @@ def _tela_insumos(setor):
 
         txt_lotes_str = f" &bull; 🎯 <b>{lotes_totais:,.0f} lotes</b>".replace(",", ".") if lotes_totais else ""
         txt_dias_str = f"⏳ <b>{dias_cobertura:.0f} dias</b>" if dias_cobertura else ""
-        
-        st.markdown(f"""
-            <div style="background-color: #1E293B; border: 1px solid #334155; border-left: 5px solid {cor}; border-radius: 12px; padding: 14px 16px; margin-bottom: 8px;">
-                <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-                    <div>
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <span style="font-size: 1.1rem; font-weight: 800; color: #F8FAFC;">{nome}</span>
-                            <span style="background: rgba(148, 163, 184, 0.15); color: #CBD5E1; font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 6px;">
-                                {unidade.upper()}
-                            </span>
-                            {f'<span style="background: rgba(100, 116, 139, 0.3); color: #94A3B8; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px;">Pausado</span>' if pausado else ''}
-                        </div>
-                        <div style="color: #94A3B8; font-size: 0.75rem; margin-top: 4px;">
-                            {obs if obs else (f'Consumo: {consumo_dia:g} {unidade}/dia' if consumo_dia > 0 else '')}
-                        </div>
-                    </div>
-                    <div style="text-align: right;">
-                        <div style="color: {cor}; font-size: 1.25rem; font-weight: 800;">
-                            {txt_estoque_principal} <span style="color: #94A3B8; font-size: 0.8rem;">{txt_estoque_secundario}</span>
-                        </div>
-                        <div style="color: #CBD5E1; font-size: 0.8rem;">
-                            {txt_dias_str} {txt_lotes_str}
-                        </div>
-                    </div>
-                </div>
-                <div style="margin: 10px 0 6px 0;">
-                    <div style="display: flex; justify-content: space-between; font-size: 0.72rem; color: #94A3B8; margin-bottom: 3px;">
-                        <span>Cobertura de Produção</span>
-                        <span style="color: {cor}; font-weight: 700;">{txt_status_barra}</span>
-                    </div>
-                    <div style="background-color: #0F172A; border-radius: 6px; height: 10px; width: 100%; overflow: hidden; border: 1px solid #334155;">
-                        <div style="background-color: {cor_fundo_barra}; width: {pct_barra:.1f}%; height: 100%; border-radius: 6px; transition: width 0.3s ease;"></div>
-                    </div>
-                </div>
+        tag_pausado = '<span style="background: rgba(100, 116, 139, 0.3); color: #94A3B8; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px;">Pausado</span>' if pausado else ''
+
+        card_html = textwrap.dedent(f"""
+<div style="background-color: #1E293B; border: 1px solid #334155; border-left: 5px solid {cor}; border-radius: 12px; padding: 14px 16px; margin-bottom: 8px;">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+        <div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 1.1rem; font-weight: 800; color: #F8FAFC;">{nome}</span>
+                <span style="background: rgba(148, 163, 184, 0.15); color: #CBD5E1; font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 6px;">{unidade.upper()}</span>
+                {tag_pausado}
             </div>
-        """, unsafe_allow_html=True)
+            <div style="color: #94A3B8; font-size: 0.75rem; margin-top: 4px;">
+                {obs if obs else (f'Consumo: {consumo_dia:g} {unidade}/dia' if consumo_dia > 0 else '')}
+            </div>
+        </div>
+        <div style="text-align: right;">
+            <div style="color: {cor}; font-size: 1.25rem; font-weight: 800;">
+                {txt_estoque_principal} <span style="color: #94A3B8; font-size: 0.8rem;">{txt_estoque_secundario}</span>
+            </div>
+            <div style="color: #CBD5E1; font-size: 0.8rem;">
+                {txt_dias_str} {txt_lotes_str}
+            </div>
+        </div>
+    </div>
+    <div style="margin: 10px 0 6px 0;">
+        <div style="display: flex; justify-content: space-between; font-size: 0.72rem; color: #94A3B8; margin-bottom: 3px;">
+            <span>Cobertura de Produção</span>
+            <span style="color: {cor}; font-weight: 700;">{txt_status_barra}</span>
+        </div>
+        <div style="background-color: #0F172A; border-radius: 6px; height: 10px; width: 100%; overflow: hidden; border: 1px solid #334155;">
+            <div style="background-color: {cor_fundo_barra}; width: {pct_barra:.1f}%; height: 100%; border-radius: 6px;"></div>
+        </div>
+    </div>
+</div>
+        """).strip()
+        st.markdown(card_html, unsafe_allow_html=True)
 
         with st.expander(f"⚙️ Movimentar / Ver Metas — {nome}"):
             if meta_3m_kg:
@@ -343,7 +370,8 @@ def _tela_insumos(setor):
                 if st.button(f"Confirmar Baixa ({nome})", key=f"btn_bx_{nome}"):
                     if qtd_baixa > 0:
                         qtd_reduzir_oficial = (qtd_baixa / 1000.0) if unidade == "kg" else qtd_baixa
-                        novo_saldo = max(0.0, estoque_val - qtd_reduzir_oficial)
+                        saldo_base_kg = estoque_kg if unidade == "kg" else estoque_val
+                        novo_saldo = max(0.0, saldo_base_kg - qtd_reduzir_oficial)
                         _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": novo_saldo})
                         _append("HISTORICO_REPOSICAO", [setor, nome, "BAIXA_CONSUMO", datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S"), -qtd_baixa, un_baixa, novo_saldo])
                         st.success(f"✅ Baixa de {qtd_baixa} {un_baixa} realizada! Novo saldo: {novo_saldo:.3f} {unidade}.")
@@ -357,7 +385,8 @@ def _tela_insumos(setor):
                 if st.button(f"Registrar Entrada ({nome})", key=f"btn_ent_{nome}"):
                     if qtd_entrada > 0:
                         qtd_adicionar_oficial = (qtd_entrada / 1000.0) if tipo_un_entrada == "gramas (g)" else qtd_entrada
-                        novo_saldo = estoque_val + qtd_adicionar_oficial
+                        saldo_base_kg = estoque_kg if unidade == "kg" else estoque_val
+                        novo_saldo = saldo_base_kg + qtd_adicionar_oficial
                         _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": novo_saldo})
                         _append("HISTORICO_REPOSICAO", [setor, nome, "ENTRADA_COMPRA", datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S"), qtd_entrada, tipo_un_entrada, novo_saldo])
                         st.success(f"✅ Entrada de {qtd_entrada} {tipo_un_entrada} registrada! Novo saldo: {novo_saldo:.3f} {unidade}.")
@@ -573,7 +602,7 @@ def _tela_limpeza(setor):
         if not df_con.empty:
             for _, r in df_con.iterrows():
                 nome_c = str(r["nome"]).strip()
-                est_c = _num(r["estoque"])
+                est_c = _parse_numero(r["estoque"])
                 obs_c = str(r.get("observacao", "")).strip()
 
                 cor_c = "#EF4444" if est_c <= 1 else "#38BDF8"
