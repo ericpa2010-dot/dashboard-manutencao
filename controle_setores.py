@@ -5,6 +5,8 @@ Usa st.container(border=True) para visual limpo sem vazamento de tags HTML.
 """
 
 import re
+import math
+import textwrap
 from datetime import datetime, timedelta
 import pandas as pd
 import pytz
@@ -21,7 +23,15 @@ COBERTURA_VERMELHA = 60   # < 60 dias -> Crítico (2 meses de importação)
 COBERTURA_AMARELA  = 120  # 60 a 120 dias -> Ponto de Compra
                           # >= 120 dias -> Verde Seguro
 
+# Dias úteis por mês usados na projeção de compra (3/6/12 meses). Mude aqui
+# se o ritmo real de produção for diferente.
+DIAS_UTEIS_POR_MES = 22
+
 HOJE_STR = datetime.now(FUSO_BR).strftime("%d/%m/%Y")
+
+# Mesma paleta de cores do card de SLA (Dashboard & SLA / cartao_prioridade_jornada
+# em app_manutencao.py) - reaproveitada aqui pra manter a mesma linguagem visual.
+_CORES_SLA = {"red": "#EF4444", "orange": "#F59E0B", "green": "#22C55E", "gray": "#64748B"}
 
 DADOS_TECNICOS_INSUMOS = {
     "zircônio":        {"consumo_dia": 0.24,    "gramas_lote": 3.0, "unidade": "kg", "obs": "Pastilha 6g a cada 2 lotes (3g/lote)"},
@@ -40,13 +50,16 @@ DADOS_TECNICOS_INSUMOS = {
 ENTIDADES = {
     "INSUMOS": {
         "headers": ["setor", "nome", "estoque_atual", "unidade", "consumo_dia_calculado", "gramas_por_lote", "status", "observacao"],
+        # estoque_atual dos insumos em "kg" já semeado em GRAMAS inteiras
+        # (0 = 0g, 6000 = 6kg, 1500 = 1,5kg) - mesma convenção da blindagem
+        # de gravação em _tela_insumos.
         "seed": [
-            ["Anti Reflexo", "Zircônio", 0.0, "kg", 0.24, 3.0, "ativo", "Pastilha 6g a cada 2 lotes (3g/lote)"],
-            ["Anti Reflexo", "Silício", 6.0, "kg", 0.20, 5.0, "ativo", "5g por lote (dois recipientes de 2,5g)"],
-            ["Anti Reflexo", "Cromo Silício", 0.0, "kg", 0.00071, 2.5, "ativo", "Troca 2x por semana (2,5g por troca)"],
+            ["Anti Reflexo", "Zircônio", 0, "kg", 0.24, 3.0, "ativo", "Pastilha 6g a cada 2 lotes (3g/lote)"],
+            ["Anti Reflexo", "Silício", 6000, "kg", 0.20, 5.0, "ativo", "5g por lote (dois recipientes de 2,5g)"],
+            ["Anti Reflexo", "Cromo Silício", 0, "kg", 0.00071, 2.5, "ativo", "Troca 2x por semana (2,5g por troca)"],
             ["Anti Reflexo", "Hidrofóbico", 0.0, "und", 40, "", "ativo", "40 und/dia"],
             ["Anti Reflexo", "Crystal de quartz", 50.0, "und", 2.9, "", "ativo", "2,9 und/dia"],
-            ["Anti Reflexo", "ITO", 1.5, "kg", 0.02, 2.5, "pausado", "2,5g por lote (processo pausado)"],
+            ["Anti Reflexo", "ITO", 1500, "kg", 0.02, 2.5, "pausado", "2,5g por lote (processo pausado)"],
             ["Anti Reflexo", "Prime H-580", 2.0, "und", "", "", "ativo", ""],
             ["Anti Reflexo", "Verniz 150S", 3.0, "und", "", "", "ativo", ""],
             ["Anti Reflexo", "Verniz 150", 1.0, "und", "", "", "ativo", ""],
@@ -201,16 +214,47 @@ def _proxima_data(data_ultima, frequencia, dias_semana):
     except Exception:
         return hoje + timedelta(days=7)
 
+def _badge_sla(cor_status, titulo, valor_grande, pct_barra, rodape=""):
+    """Badge + barra coloridos, mesmo padrao (textwrap.dedent().strip()) usado
+    no card de prioridade do Dashboard & SLA - já comprovado sem vazar HTML."""
+    cor_hex = _CORES_SLA.get(cor_status, _CORES_SLA["gray"])
+    pct_barra = max(0.0, min(100.0, pct_barra))
+    rodape_html = f'<div style="font-size:0.8rem; color:#CBD5E1; margin-top:4px;">{rodape}</div>' if rodape else ""
+    return textwrap.dedent(f"""
+        <div style="background-color:#1E293B; border:2px solid {cor_hex}; padding:12px 15px; border-radius:12px; margin-top:6px;">
+            <div style="font-weight:800; color:{cor_hex}; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.03em;">{titulo}</div>
+            <div style="font-size:1.25rem; font-weight:800; color:{cor_hex}; margin:4px 0;">{valor_grande}</div>
+            <div style="background-color:#334155; border-radius:6px; height:12px; width:100%; margin:8px 0; overflow:hidden;">
+                <div style="background-color:{cor_hex}; width:{pct_barra:.1f}%; height:100%; border-radius:6px; transition: width 0.5s ease;"></div>
+            </div>
+            {rodape_html}
+        </div>
+    """).strip()
+
+def _fmt_projecao(consumo_dia, dias, unidade):
+    """Consumo projetado (consumo_dia x dias) convertido pra unidade de compra:
+    pacotes de 1kg (arredondado pra cima) se unidade == kg, senão unidades."""
+    total = consumo_dia * dias
+    qtd = math.ceil(total) if total > 0 else 0
+    if unidade == "kg":
+        return f"{qtd} pacote(s) de 1kg"
+    return f"{qtd} {unidade}"
+
 # ---------------------------------------------------------------------------
 # TELA 1: ESTOQUE DE INSUMOS (100% NATIVO, DIRETO E SEM QUEBRAS)
 # ---------------------------------------------------------------------------
 def _tela_insumos(setor):
     st.info("📦 **Gestão Prática de Insumos & Lotes** — Defina abaixo o estoque real exato de cada item. Use os botões de 1 clique para registrar baixas de pastilha/lote.")
 
-    # Botão de Zerar Tudo
+    # Botão de Zerar Tudo - só habilita depois de marcar a confirmação
     col_z1, col_z2 = st.columns([3, 1])
     with col_z2:
-        if st.button("🗑️ Zerar Todos os Insumos", use_container_width=True, help="Zera o estoque de todos os insumos para colocar valores limpos"):
+        confirmar_zerar = st.checkbox("Confirmar zerar TODOS os insumos", key="cs_confirma_zerar")
+        if st.button(
+            "🗑️ Zerar Todos os Insumos", use_container_width=True,
+            disabled=not confirmar_zerar,
+            help="Marque a confirmação acima para habilitar. Zera o estoque de TODOS os insumos, de TODOS os setores — ação irreversível.",
+        ):
             try:
                 ws = _ws("INSUMOS")
                 valores = ws.get_all_values()
@@ -218,10 +262,11 @@ def _tela_insumos(setor):
                 idx_est = header.index("estoque_atual") if "estoque_atual" in header else 2
                 updates = []
                 for i in range(2, len(valores) + 1):
-                    updates.append({"range": rowcol_to_a1(i, idx_est + 1), "values": [[0.0]]})
+                    updates.append({"range": rowcol_to_a1(i, idx_est + 1), "values": [[0]]})
                 if updates:
                     ws.batch_update(updates, value_input_option="RAW")
                 st.success("✅ Todos os insumos foram zerados!")
+                st.session_state["cs_confirma_zerar"] = False  # desarma a confirmação
                 st.cache_data.clear()
                 st.rerun()
             except Exception as ex:
@@ -233,6 +278,7 @@ def _tela_insumos(setor):
         st.warning("Nenhum insumo encontrado para este setor.")
         return
 
+    linhas_projecao = []
     for _, r in df.iterrows():
         nome = str(r["nome"]).strip()
         nome_k = nome.lower().strip()
@@ -255,13 +301,23 @@ def _tela_insumos(setor):
             gramas_lote = _parse_num(r.get("gramas_por_lote", 0.0))
             obs = obs_raw
 
-        # Sanitização de estoque
-        if unidade == "kg" and estoque_raw > 1000.0:
-            estoque_kg = 0.0
-            estoque_g = 0.0
-        elif unidade == "kg":
-            estoque_kg = estoque_raw
-            estoque_g = estoque_raw * 1000.0
+        # Projeção de compra (só entram insumos com consumo/dia conhecido)
+        if consumo_dia and consumo_dia > 0:
+            linhas_projecao.append({
+                "Insumo": nome,
+                "Consumo/dia": f"{consumo_dia:g} {unidade}",
+                f"3 meses ({DIAS_UTEIS_POR_MES * 3}d)": _fmt_projecao(consumo_dia, DIAS_UTEIS_POR_MES * 3, unidade),
+                f"6 meses ({DIAS_UTEIS_POR_MES * 6}d)": _fmt_projecao(consumo_dia, DIAS_UTEIS_POR_MES * 6, unidade),
+                f"12 meses ({DIAS_UTEIS_POR_MES * 12}d)": _fmt_projecao(consumo_dia, DIAS_UTEIS_POR_MES * 12, unidade),
+            })
+
+        # Estoque: para insumos cadastrados em "kg", estoque_atual é SEMPRE
+        # gravado na planilha como inteiro de GRAMAS (nunca decimal) -
+        # blindagem contra o Sheets reinterpretar "." como separador de
+        # milhar em locale pt-BR. Aqui só convertemos pra kg pra exibir.
+        if unidade == "kg":
+            estoque_g = estoque_raw
+            estoque_kg = estoque_raw / 1000.0
         else:
             estoque_kg = estoque_raw
             estoque_g = 0.0
@@ -313,8 +369,13 @@ def _tela_insumos(setor):
                 else:
                     st.metric("Cobertura", "—")
 
-            # Linha 2: Barra de Vida
-            st.progress(progresso_pct, text=f"Saúde do Estoque: {msg_sla}")
+            # Linha 2: Barra de Vida - mesmo estilo (cores/card) do badge de
+            # prioridade do Dashboard & SLA
+            rodape_lotes = f"{lotes_totais:,.0f} lotes restantes".replace(",", ".") if (dias_cobertura and lotes_totais) else ""
+            st.markdown(
+                _badge_sla(cor_status, "Saúde do Estoque", msg_sla, progresso_pct * 100, rodape_lotes),
+                unsafe_allow_html=True,
+            )
 
             # Linha 3: Controles Práticos de 1 Clique e Ajuste Direto
             c_baixa, c_ajuste = st.columns([1, 1])
@@ -324,30 +385,30 @@ def _tela_insumos(setor):
                     b1, b2 = st.columns(2)
                     with b1:
                         if st.button("📤 -1 Pastilha (6g)", key=f"bx1_{nome}", use_container_width=True):
-                            novo = max(0.0, estoque_kg - 0.006)
-                            _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": novo})
-                            st.success(f"Baixa de 6g salva! Novo saldo: {novo:.3f} kg")
+                            novo_g = max(0, round(estoque_g - 6))
+                            _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": novo_g})
+                            st.success(f"Baixa de 6g salva! Novo saldo: {novo_g} g ({novo_g/1000:.3f} kg)")
                             st.cache_data.clear()
                             st.rerun()
                     with b2:
                         if st.button("📤 -2 Pastilhas (12g)", key=f"bx2_{nome}", use_container_width=True):
-                            novo = max(0.0, estoque_kg - 0.012)
-                            _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": novo})
-                            st.success(f"Baixa de 12g salva! Novo saldo: {novo:.3f} kg")
+                            novo_g = max(0, round(estoque_g - 12))
+                            _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": novo_g})
+                            st.success(f"Baixa de 12g salva! Novo saldo: {novo_g} g ({novo_g/1000:.3f} kg)")
                             st.cache_data.clear()
                             st.rerun()
                 elif nome_k in ["silício", "silicio"]:
                     if st.button("📤 -1 Lote (5g)", key=f"bx1_{nome}", use_container_width=True):
-                        novo = max(0.0, estoque_kg - 0.005)
-                        _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": novo})
-                        st.success(f"Baixa de 5g salva! Novo saldo: {novo:.3f} kg")
+                        novo_g = max(0, round(estoque_g - 5))
+                        _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": novo_g})
+                        st.success(f"Baixa de 5g salva! Novo saldo: {novo_g} g ({novo_g/1000:.3f} kg)")
                         st.cache_data.clear()
                         st.rerun()
                 elif nome_k in ["cromo silício", "cromo silicio"]:
                     if st.button("📤 -1 Troca (2,5g)", key=f"bx1_{nome}", use_container_width=True):
-                        novo = max(0.0, estoque_kg - 0.0025)
-                        _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": novo})
-                        st.success(f"Baixa de 2,5g salva! Novo saldo: {novo:.3f} kg")
+                        novo_g = max(0, round(estoque_g - 2.5))
+                        _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": novo_g})
+                        st.success(f"Baixa de 2,5g salva! Novo saldo: {novo_g} g ({novo_g/1000:.3f} kg)")
                         st.cache_data.clear()
                         st.rerun()
                 else:
@@ -356,17 +417,48 @@ def _tela_insumos(setor):
             with c_ajuste:
                 col_inp, col_un, col_save = st.columns([2, 1, 1])
                 val_base = float(estoque_kg) if unidade == "kg" else float(estoque_raw)
+                txt_base = f"{val_base:g}".replace(".", ",")
                 with col_inp:
-                    novo_val = st.number_input("Estoque Real", min_value=0.0, value=val_base, step=0.1, key=f"inp_{nome}", label_visibility="collapsed")
+                    # text_input (não number_input) porque number_input só aceita
+                    # ponto como decimal - aqui aceitamos vírgula, e ignoramos
+                    # texto solto tipo "kg"/"g" digitado junto por engano.
+                    txt_val = st.text_input(
+                        "Estoque Real", value=txt_base, key=f"inp_{nome}",
+                        label_visibility="collapsed", placeholder="Ex: 0,38",
+                    )
                 with col_un:
                     un_sel = st.selectbox("Un", ["kg", "g"] if unidade == "kg" else [unidade], key=f"un_{nome}", label_visibility="collapsed")
                 with col_save:
                     if st.button("💾 Salvar", key=f"btn_save_{nome}", use_container_width=True):
-                        val_oficial = (novo_val / 1000.0) if un_sel == "g" else novo_val
-                        _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": val_oficial})
-                        st.success(f"Estoque de {nome} salvo como {val_oficial:g} {unidade}!")
-                        st.cache_data.clear()
-                        st.rerun()
+                        limpo = re.sub(r"[^0-9,.\-]", "", txt_val).strip()
+                        novo_val = _parse_num(limpo, padrao=None)
+                        if novo_val is None or novo_val < 0:
+                            st.error("Valor inválido — use apenas números (ex: 0,38 ou 389).")
+                        else:
+                            if unidade == "kg":
+                                # Blindagem: pra insumos em kg, o que vai pra planilha é
+                                # SEMPRE inteiro de gramas, nunca decimal - independente
+                                # de o usuário ter escolhido "kg" ou "g" no seletor ao
+                                # lado. Elimina de vez ponto/vírgula passando pelo Sheets.
+                                gramas = novo_val if un_sel == "g" else novo_val * 1000.0
+                                val_gravar = int(round(gramas))
+                                val_exibicao = f"{val_gravar/1000:.3f} kg ({val_gravar} g)"
+                            else:
+                                val_gravar = novo_val
+                                val_exibicao = f"{val_gravar:g} {unidade}"
+                            _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": val_gravar})
+                            st.success(f"Estoque de {nome} salvo como {val_exibicao}!")
+                            st.cache_data.clear()
+                            st.rerun()
+
+    if linhas_projecao:
+        with st.expander("📈 Projeção de Compra (3 / 6 / 12 meses)"):
+            st.caption(
+                f"consumo/dia × dias úteis, usando {DIAS_UTEIS_POR_MES} dias úteis/mês "
+                "(constante DIAS_UTEIS_POR_MES no topo do arquivo). Insumos sem "
+                "consumo/dia definido não entram aqui."
+            )
+            st.dataframe(pd.DataFrame(linhas_projecao), use_container_width=True, hide_index=True)
 
 # ---------------------------------------------------------------------------
 # TELA 2: CONTROLE DE PROCESSO (VERNIZ & PRIME)
