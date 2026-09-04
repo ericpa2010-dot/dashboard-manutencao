@@ -37,10 +37,10 @@ DADOS_TECNICOS_INSUMOS = {
     # Consumo/dia medido na prática (áudio + medição direta do operador),
     # substituindo o cálculo teórico do manual do fabricante. Setor Anti
     # Reflexo: 5 dias úteis/semana, 2 limpezas completas (quarta e sexta).
-    "zircônio":        {"consumo_dia": 0.12,     "gramas_lote": 3.0, "unidade": "kg", "obs": "Pastilha 6g, virada e usada nos 2 lados (3g cada lado) por ciclo"},
-    "zirconio":        {"consumo_dia": 0.12,     "gramas_lote": 3.0, "unidade": "kg", "obs": "Pastilha 6g, virada e usada nos 2 lados (3g cada lado) por ciclo"},
-    "silício":         {"consumo_dia": 0.00368,  "gramas_lote": 5.0, "unidade": "kg", "obs": "2 potes: limpeza completa 2x/semana (5g cada) + reposição parcial 3x/semana (2,8g cada, só remove parte queimada)"},
-    "silicio":         {"consumo_dia": 0.00368,  "gramas_lote": 5.0, "unidade": "kg", "obs": "2 potes: limpeza completa 2x/semana (5g cada) + reposição parcial 3x/semana (2,8g cada, só remove parte queimada)"},
+    "zircônio":        {"consumo_dia": 0.06,     "gramas_lote": 6.0, "unidade": "kg", "obs": "Pastilha 6g, virada entre os 2 lados (CC/CX) da mesma lente, 1 pastilha por ciclo"},
+    "zirconio":        {"consumo_dia": 0.06,     "gramas_lote": 6.0, "unidade": "kg", "obs": "Pastilha 6g, virada entre os 2 lados (CC/CX) da mesma lente, 1 pastilha por ciclo"},
+    "silício":         {"consumo_dia": 0.058,    "gramas_lote": 5.0, "unidade": "kg", "obs": "2 potinhos: completa 1,4g cada a cada lote (2,8g/lote) + troca completa 2x/semana na limpeza (2,5g cada, 5g/troca)"},
+    "silicio":         {"consumo_dia": 0.058,    "gramas_lote": 5.0, "unidade": "kg", "obs": "2 potinhos: completa 1,4g cada a cada lote (2,8g/lote) + troca completa 2x/semana na limpeza (2,5g cada, 5g/troca)"},
     "cromo silício":   {"consumo_dia": 0.001,    "gramas_lote": 2.5, "unidade": "kg", "obs": "Trocado só nas 2 limpezas semanais (quarta e sexta), 2,5g cada"},
     "cromo silicio":   {"consumo_dia": 0.001,    "gramas_lote": 2.5, "unidade": "kg", "obs": "Trocado só nas 2 limpezas semanais (quarta e sexta), 2,5g cada"},
     "hidrofóbico":     {"consumo_dia": 40.0,    "gramas_lote": 0.0, "unidade": "und", "obs": "40 und/dia"},
@@ -57,8 +57,8 @@ ENTIDADES = {
         # (0 = 0g, 6000 = 6kg, 1500 = 1,5kg) - mesma convenção da blindagem
         # de gravação em _tela_insumos.
         "seed": [
-            ["Anti Reflexo", "Zircônio", 0, "kg", 0.12, 3.0, "ativo", "Pastilha 6g, virada e usada nos 2 lados (3g cada lado) por ciclo"],
-            ["Anti Reflexo", "Silício", 6000, "kg", 0.00368, 5.0, "ativo", "2 potes: limpeza completa 2x/semana (5g cada) + reposição parcial 3x/semana (2,8g cada, só remove parte queimada)"],
+            ["Anti Reflexo", "Zircônio", 0, "kg", 0.06, 6.0, "ativo", "Pastilha 6g, virada entre os 2 lados (CC/CX) da mesma lente, 1 pastilha por ciclo"],
+            ["Anti Reflexo", "Silício", 6000, "kg", 0.058, 5.0, "ativo", "2 potinhos: completa 1,4g cada a cada lote (2,8g/lote) + troca completa 2x/semana na limpeza (2,5g cada, 5g/troca)"],
             ["Anti Reflexo", "Cromo Silício", 0, "kg", 0.001, 2.5, "ativo", "Trocado só nas 2 limpezas semanais (quarta e sexta), 2,5g cada"],
             ["Anti Reflexo", "Hidrofóbico", 0.0, "und", 40, "", "ativo", "40 und/dia"],
             ["Anti Reflexo", "Crystal de quartz", 50.0, "und", 2.9, "", "ativo", "2,9 und/dia"],
