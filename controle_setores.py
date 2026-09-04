@@ -50,13 +50,16 @@ DADOS_TECNICOS_INSUMOS = {
 ENTIDADES = {
     "INSUMOS": {
         "headers": ["setor", "nome", "estoque_atual", "unidade", "consumo_dia_calculado", "gramas_por_lote", "status", "observacao"],
+        # estoque_atual dos insumos em "kg" já semeado em GRAMAS inteiras
+        # (0 = 0g, 6000 = 6kg, 1500 = 1,5kg) - mesma convenção da blindagem
+        # de gravação em _tela_insumos.
         "seed": [
-            ["Anti Reflexo", "Zircônio", 0.0, "kg", 0.24, 3.0, "ativo", "Pastilha 6g a cada 2 lotes (3g/lote)"],
-            ["Anti Reflexo", "Silício", 6.0, "kg", 0.20, 5.0, "ativo", "5g por lote (dois recipientes de 2,5g)"],
-            ["Anti Reflexo", "Cromo Silício", 0.0, "kg", 0.00071, 2.5, "ativo", "Troca 2x por semana (2,5g por troca)"],
+            ["Anti Reflexo", "Zircônio", 0, "kg", 0.24, 3.0, "ativo", "Pastilha 6g a cada 2 lotes (3g/lote)"],
+            ["Anti Reflexo", "Silício", 6000, "kg", 0.20, 5.0, "ativo", "5g por lote (dois recipientes de 2,5g)"],
+            ["Anti Reflexo", "Cromo Silício", 0, "kg", 0.00071, 2.5, "ativo", "Troca 2x por semana (2,5g por troca)"],
             ["Anti Reflexo", "Hidrofóbico", 0.0, "und", 40, "", "ativo", "40 und/dia"],
             ["Anti Reflexo", "Crystal de quartz", 50.0, "und", 2.9, "", "ativo", "2,9 und/dia"],
-            ["Anti Reflexo", "ITO", 1.5, "kg", 0.02, 2.5, "pausado", "2,5g por lote (processo pausado)"],
+            ["Anti Reflexo", "ITO", 1500, "kg", 0.02, 2.5, "pausado", "2,5g por lote (processo pausado)"],
             ["Anti Reflexo", "Prime H-580", 2.0, "und", "", "", "ativo", ""],
             ["Anti Reflexo", "Verniz 150S", 3.0, "und", "", "", "ativo", ""],
             ["Anti Reflexo", "Verniz 150", 1.0, "und", "", "", "ativo", ""],
@@ -259,7 +262,7 @@ def _tela_insumos(setor):
                 idx_est = header.index("estoque_atual") if "estoque_atual" in header else 2
                 updates = []
                 for i in range(2, len(valores) + 1):
-                    updates.append({"range": rowcol_to_a1(i, idx_est + 1), "values": [[0.0]]})
+                    updates.append({"range": rowcol_to_a1(i, idx_est + 1), "values": [[0]]})
                 if updates:
                     ws.batch_update(updates, value_input_option="RAW")
                 st.success("✅ Todos os insumos foram zerados!")
@@ -308,13 +311,13 @@ def _tela_insumos(setor):
                 f"12 meses ({DIAS_UTEIS_POR_MES * 12}d)": _fmt_projecao(consumo_dia, DIAS_UTEIS_POR_MES * 12, unidade),
             })
 
-        # Sanitização de estoque
-        if unidade == "kg" and estoque_raw > 1000.0:
-            estoque_kg = 0.0
-            estoque_g = 0.0
-        elif unidade == "kg":
-            estoque_kg = estoque_raw
-            estoque_g = estoque_raw * 1000.0
+        # Estoque: para insumos cadastrados em "kg", estoque_atual é SEMPRE
+        # gravado na planilha como inteiro de GRAMAS (nunca decimal) -
+        # blindagem contra o Sheets reinterpretar "." como separador de
+        # milhar em locale pt-BR. Aqui só convertemos pra kg pra exibir.
+        if unidade == "kg":
+            estoque_g = estoque_raw
+            estoque_kg = estoque_raw / 1000.0
         else:
             estoque_kg = estoque_raw
             estoque_g = 0.0
@@ -382,30 +385,30 @@ def _tela_insumos(setor):
                     b1, b2 = st.columns(2)
                     with b1:
                         if st.button("📤 -1 Pastilha (6g)", key=f"bx1_{nome}", use_container_width=True):
-                            novo = max(0.0, estoque_kg - 0.006)
-                            _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": novo})
-                            st.success(f"Baixa de 6g salva! Novo saldo: {novo:.3f} kg")
+                            novo_g = max(0, round(estoque_g - 6))
+                            _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": novo_g})
+                            st.success(f"Baixa de 6g salva! Novo saldo: {novo_g} g ({novo_g/1000:.3f} kg)")
                             st.cache_data.clear()
                             st.rerun()
                     with b2:
                         if st.button("📤 -2 Pastilhas (12g)", key=f"bx2_{nome}", use_container_width=True):
-                            novo = max(0.0, estoque_kg - 0.012)
-                            _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": novo})
-                            st.success(f"Baixa de 12g salva! Novo saldo: {novo:.3f} kg")
+                            novo_g = max(0, round(estoque_g - 12))
+                            _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": novo_g})
+                            st.success(f"Baixa de 12g salva! Novo saldo: {novo_g} g ({novo_g/1000:.3f} kg)")
                             st.cache_data.clear()
                             st.rerun()
                 elif nome_k in ["silício", "silicio"]:
                     if st.button("📤 -1 Lote (5g)", key=f"bx1_{nome}", use_container_width=True):
-                        novo = max(0.0, estoque_kg - 0.005)
-                        _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": novo})
-                        st.success(f"Baixa de 5g salva! Novo saldo: {novo:.3f} kg")
+                        novo_g = max(0, round(estoque_g - 5))
+                        _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": novo_g})
+                        st.success(f"Baixa de 5g salva! Novo saldo: {novo_g} g ({novo_g/1000:.3f} kg)")
                         st.cache_data.clear()
                         st.rerun()
                 elif nome_k in ["cromo silício", "cromo silicio"]:
                     if st.button("📤 -1 Troca (2,5g)", key=f"bx1_{nome}", use_container_width=True):
-                        novo = max(0.0, estoque_kg - 0.0025)
-                        _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": novo})
-                        st.success(f"Baixa de 2,5g salva! Novo saldo: {novo:.3f} kg")
+                        novo_g = max(0, round(estoque_g - 2.5))
+                        _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": novo_g})
+                        st.success(f"Baixa de 2,5g salva! Novo saldo: {novo_g} g ({novo_g/1000:.3f} kg)")
                         st.cache_data.clear()
                         st.rerun()
                 else:
@@ -432,9 +435,19 @@ def _tela_insumos(setor):
                         if novo_val is None or novo_val < 0:
                             st.error("Valor inválido — use apenas números (ex: 0,38 ou 389).")
                         else:
-                            val_oficial = (novo_val / 1000.0) if un_sel == "g" else novo_val
-                            _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": val_oficial})
-                            st.success(f"Estoque de {nome} salvo como {val_oficial:g} {unidade}!")
+                            if unidade == "kg":
+                                # Blindagem: pra insumos em kg, o que vai pra planilha é
+                                # SEMPRE inteiro de gramas, nunca decimal - independente
+                                # de o usuário ter escolhido "kg" ou "g" no seletor ao
+                                # lado. Elimina de vez ponto/vírgula passando pelo Sheets.
+                                gramas = novo_val if un_sel == "g" else novo_val * 1000.0
+                                val_gravar = int(round(gramas))
+                                val_exibicao = f"{val_gravar/1000:.3f} kg ({val_gravar} g)"
+                            else:
+                                val_gravar = novo_val
+                                val_exibicao = f"{val_gravar:g} {unidade}"
+                            _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": val_gravar})
+                            st.success(f"Estoque de {nome} salvo como {val_exibicao}!")
                             st.cache_data.clear()
                             st.rerun()
 
