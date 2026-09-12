@@ -43,12 +43,50 @@ DADOS_TECNICOS_INSUMOS = {
     "silicio":         {"consumo_dia": 0.058,    "gramas_lote": 5.0, "unidade": "kg", "obs": "2 potinhos: completa 1,4g cada a cada lote (2,8g/lote) + troca completa 2x/semana na limpeza (2,5g cada, 5g/troca)"},
     "cromo silício":   {"consumo_dia": 0.001,    "gramas_lote": 2.5, "unidade": "kg", "obs": "Trocado só nas 2 limpezas semanais (quarta e sexta), 2,5g cada"},
     "cromo silicio":   {"consumo_dia": 0.001,    "gramas_lote": 2.5, "unidade": "kg", "obs": "Trocado só nas 2 limpezas semanais (quarta e sexta), 2,5g cada"},
-    "hidrofóbico":     {"consumo_dia": 40.0,    "gramas_lote": 0.0, "unidade": "und", "obs": "40 und/dia"},
-    "hidrofobico":     {"consumo_dia": 40.0,    "gramas_lote": 0.0, "unidade": "und", "obs": "40 und/dia"},
+    "hidrofóbico":     {"consumo_dia": 20.0,    "gramas_lote": 0.0, "unidade": "und", "obs": "1 und por LOTE (20 lotes/dia) - alternativo ao Super Hidrofóbico"},
+    "hidrofobico":     {"consumo_dia": 20.0,    "gramas_lote": 0.0, "unidade": "und", "obs": "1 und por LOTE (20 lotes/dia) - alternativo ao Super Hidrofóbico"},
+    "super hidrofóbico": {"consumo_dia": 10.0,  "gramas_lote": 0.0, "unidade": "und", "obs": "1 und por CICLO (10 ciclos/dia = 2 lotes cada) - alternativo ao Hidrofóbico"},
+    "super hidrofobico": {"consumo_dia": 10.0,  "gramas_lote": 0.0, "unidade": "und", "obs": "1 und por CICLO (10 ciclos/dia = 2 lotes cada) - alternativo ao Hidrofóbico"},
     "crystal de quartz":{"consumo_dia": 2.9,    "gramas_lote": 0.0, "unidade": "und", "obs": "2,9 und/dia"},
     "ito":             {"consumo_dia": 0.02,    "gramas_lote": 2.5, "unidade": "kg", "obs": "2,5g por lote (processo pausado)"},
     "otb uv-xbt":      {"consumo_dia": 0.067,   "gramas_lote": 0.0, "unidade": "und", "obs": "2 und/mês"},
 }
+
+# ---------------------------------------------------------------------------
+# Preparo Químico (SL-501) - referência estática do processo, cuba a cuba.
+# ---------------------------------------------------------------------------
+PREPARO_QUIMICO_SL501 = [
+    {"Cuba": 1,  "Produto": "Soda 50%",           "Temperatura": "50°C", "Dosagem": "3,5L", "Frequência": "1x/semana"},
+    {"Cuba": 2,  "Produto": "Soda 5%",             "Temperatura": "50°C", "Dosagem": "700ml", "Frequência": "1x/semana"},
+    {"Cuba": 3,  "Produto": "Água",                "Temperatura": "—",    "Dosagem": "7L", "Frequência": "—"},
+    {"Cuba": 4,  "Produto": "Detergente ácido",    "Temperatura": "50°C", "Dosagem": "700ml", "Frequência": "1x/semana"},
+    {"Cuba": 5,  "Produto": "Água",                "Temperatura": "—",    "Dosagem": "7L", "Frequência": "—"},
+    {"Cuba": 6,  "Produto": "Água D.I.",           "Temperatura": "50°C", "Dosagem": "7L", "Frequência": "—"},
+    {"Cuba": 7,  "Produto": "Água D.I.",           "Temperatura": "50°C", "Dosagem": "7L", "Frequência": "—"},
+    {"Cuba": 8,  "Produto": "Forno (secagem)",     "Temperatura": "80°C", "Dosagem": "—", "Frequência": "—"},
+    {"Cuba": 9,  "Produto": "Espera (descanso)",   "Temperatura": "—",    "Dosagem": "—", "Frequência": "—"},
+    {"Cuba": 10, "Produto": "Prime",               "Temperatura": "15°C", "Dosagem": "4L", "Frequência": "—"},
+    {"Cuba": 11, "Produto": "Forno (secagem)",     "Temperatura": "80°C", "Dosagem": "—", "Frequência": "—"},
+    {"Cuba": 12, "Produto": "Espera (descanso)",   "Temperatura": "—",    "Dosagem": "—", "Frequência": "—"},
+    {"Cuba": 13, "Produto": "Verniz (espera)",     "Temperatura": "—",    "Dosagem": "descanso", "Frequência": "—"},
+    {"Cuba": 14, "Produto": "Verniz",              "Temperatura": "15°C", "Dosagem": "4L", "Frequência": "—"},
+    {"Cuba": 15, "Produto": "Forno (secagem)",     "Temperatura": "80°C", "Dosagem": "—", "Frequência": "—"},
+    {"Cuba": 16, "Produto": "Saída (retirada)",    "Temperatura": "—",    "Dosagem": "—", "Frequência": "—"},
+]
+
+FORMULA_DOSAGEM_SODA = {
+    "concentracao_atual": 50, "desejada": 20, "litragem_cuba": 30, "qtd_colocar": "12L",
+    "nota_1": "Recomendado manter Soda em 25% para destratar",
+    "misturas": [("Soda 50%", "2,5L soda"), ("Soda 5%", "500ml soda"), ("Detergente", "250ml detergente")],
+    "nota_2": "Colocar água D.I. antes",
+}
+
+# ---------------------------------------------------------------------------
+# Polimento (setor Surfaçagem) - polidoras, materiais e tipos de má-polimento.
+# ---------------------------------------------------------------------------
+POLIDORAS = ["Polidora 1", "Polidora 2", "Polidora 3"]
+MATERIAIS_POLIMENTO = ["Policarbonato", "Alto Índice", "CR-39", "1.56"]
+TIPOS_MA_POLIMENTO = ["Mau Polido", "Riscos", "Casca de Laranja", "Embaçamento", "Ondulação", "Outro"]
 
 ENTIDADES = {
     "INSUMOS": {
@@ -60,7 +98,8 @@ ENTIDADES = {
             ["Anti Reflexo", "Zircônio", 0, "kg", 0.06, 6.0, "ativo", "Pastilha 6g, virada entre os 2 lados (CC/CX) da mesma lente, 1 pastilha por ciclo"],
             ["Anti Reflexo", "Silício", 6000, "kg", 0.058, 5.0, "ativo", "2 potinhos: completa 1,4g cada a cada lote (2,8g/lote) + troca completa 2x/semana na limpeza (2,5g cada, 5g/troca)"],
             ["Anti Reflexo", "Cromo Silício", 0, "kg", 0.001, 2.5, "ativo", "Trocado só nas 2 limpezas semanais (quarta e sexta), 2,5g cada"],
-            ["Anti Reflexo", "Hidrofóbico", 0.0, "und", 40, "", "ativo", "40 und/dia"],
+            ["Anti Reflexo", "Hidrofóbico", 0.0, "und", 20, "", "ativo", "1 und por lote"],
+            ["Anti Reflexo", "Super Hidrofóbico", 0.0, "und", 10, "", "pausado", "1 und por ciclo (alternativo ao Hidrofóbico)"],
             ["Anti Reflexo", "Crystal de quartz", 50.0, "und", 2.9, "", "ativo", "2,9 und/dia"],
             ["Anti Reflexo", "ITO", 1500, "kg", 0.02, 2.5, "pausado", "2,5g por lote (processo pausado)"],
             ["Anti Reflexo", "Prime H-580", 2.0, "und", "", "", "ativo", ""],
@@ -109,6 +148,31 @@ ENTIDADES = {
     },
     "HISTORICO_REPOSICAO": {
         "headers": ["setor", "insumo", "tipo_movimento", "data_hora", "quantidade", "unidade", "saldo_pos"],
+        "seed": [],
+    },
+    "PREPARO_QUIMICO": {
+        "headers": ["setor", "nome", "estoque", "unidade", "observacao"],
+        "seed": [
+            ["Anti Reflexo", "Galão de soda 50%", 32.89, "L", ""],
+            ["Anti Reflexo", "Galão ácido", 20.0, "L", ""],
+        ],
+    },
+    "POLIMENTO_OCORRENCIAS": {
+        "headers": ["setor", "data_hora", "polidora", "material", "quantidade", "tipo_ma_polimento", "conferente"],
+        "seed": [],
+    },
+    "POLIMENTO_DISCOS": {
+        "headers": ["setor", "polidora", "data_ultima_troca", "proxima_troca"],
+        "seed": [
+            ["Surfaçagem", "Polidora 1", HOJE_STR, ""],
+            ["Surfaçagem", "Polidora 2", HOJE_STR, ""],
+            ["Surfaçagem", "Polidora 3", HOJE_STR, ""],
+        ],
+    },
+    "PRODUCAO_DIARIA": {
+        "headers": ["setor", "data", "lotes", "limpeza", "zirconio_g", "silicio_g",
+                    "cromo_silicio_g", "ito_g", "hidrofobico_und", "super_hidrofobico_und",
+                    "crystal_und"],
         "seed": [],
     },
 }
@@ -217,6 +281,82 @@ def _proxima_data(data_ultima, frequencia, dias_semana):
     except Exception:
         return hoje + timedelta(days=7)
 
+def _e_dia_limpeza(data):
+    """Quarta ou sexta - mesmo critério das 2 limpezas semanais completas."""
+    return data.weekday() in (2, 4)  # 2=quarta, 4=sexta
+
+def _crystal_deduzir(setor, lotes_hoje):
+    """Unidades de Crystal de quartz a descontar HOJE (1 a cada 7 lotes),
+    acumulando a fração entre os dias em vez de arredondar toda vez: soma
+    todo o histórico de lotes já registrado, e desconta só a diferença
+    entre o total-devido-até-hoje e o que já foi deduzido até ontem."""
+    df_prod = _load("PRODUCAO_DIARIA")
+    df_prod = df_prod[df_prod["setor"].astype(str).str.strip() == setor]
+    lotes_antes = df_prod["lotes"].apply(lambda v: _parse_num(v, 0.0)).sum() if not df_prod.empty else 0.0
+    total_antes = math.floor(lotes_antes / 7)
+    total_com_hoje = math.floor((lotes_antes + lotes_hoje) / 7)
+    return float(total_com_hoje - total_antes)
+
+def _calcular_deducoes_producao(setor, lotes, data_produzida):
+    """Fórmulas de desconto automático por 'lotes produzidos hoje'. Retorna
+    (deducoes, limpeza) - deducoes é {nome_insumo: quantidade}, em gramas
+    pros insumos em kg e em unidades pros demais."""
+    ciclos = lotes / 2.0
+    limpeza = _e_dia_limpeza(data_produzida)
+    deducoes = {
+        "Zircônio": 6.0 * ciclos,
+        "Silício": 2.8 * lotes + (5.0 if limpeza else 0.0),
+        "Cromo Silício": 5.0 if limpeza else 0.0,
+        "Hidrofóbico": 1.0 * lotes,
+        "Super Hidrofóbico": 1.0 * ciclos,
+        "Crystal de quartz": _crystal_deduzir(setor, lotes),
+    }
+    return deducoes, limpeza
+
+_MAPA_COLUNA_PRODUCAO = {
+    "Zircônio": "zirconio_g", "Silício": "silicio_g", "Cromo Silício": "cromo_silicio_g",
+    "Hidrofóbico": "hidrofobico_und", "Super Hidrofóbico": "super_hidrofobico_und",
+    "Crystal de quartz": "crystal_und",
+}
+
+def _registrar_producao_dia(setor, df_insumos, lotes, data_produzida):
+    """Aplica o desconto automático (respeitando insumos pausados - ex: só
+    um dos dois Hidrofóbicos ativo por vez) e grava a linha do dia em
+    PRODUCAO_DIARIA. Retorna a lista de resumo (texto) do que foi descontado."""
+    deducoes, limpeza = _calcular_deducoes_producao(setor, lotes, data_produzida)
+    resumo = []
+    valores_linha = {c: 0 for c in _MAPA_COLUNA_PRODUCAO.values()}
+    valores_linha["ito_g"] = 0
+
+    for nome, qtd in deducoes.items():
+        if qtd is None or qtd <= 0:
+            continue
+        linha = df_insumos[df_insumos["nome"].astype(str).str.strip() == nome]
+        if linha.empty:
+            continue
+        r = linha.iloc[0]
+        if str(r["status"]).strip().lower() == "pausado":
+            continue  # respeita pausado (ex: alternância Hidrofóbico x Super Hidrofóbico)
+        unidade = str(r["unidade"]).strip().lower()
+        estoque_raw = _parse_num(r["estoque_atual"])
+        if unidade == "kg":
+            novo = max(0, round(estoque_raw - qtd))
+            resumo.append(f"{nome}: -{qtd:g}g")
+        else:
+            novo = max(0.0, estoque_raw - qtd)
+            resumo.append(f"{nome}: -{qtd:g} {unidade}")
+        _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": novo})
+        if nome in _MAPA_COLUNA_PRODUCAO:
+            valores_linha[_MAPA_COLUNA_PRODUCAO[nome]] = qtd
+
+    _append("PRODUCAO_DIARIA", [
+        setor, data_produzida.strftime("%d/%m/%Y"), lotes, "Sim" if limpeza else "Não",
+        valores_linha["zirconio_g"], valores_linha["silicio_g"], valores_linha["cromo_silicio_g"],
+        valores_linha["ito_g"], valores_linha["hidrofobico_und"], valores_linha["super_hidrofobico_und"],
+        valores_linha["crystal_und"],
+    ])
+    return resumo, limpeza
+
 def _bump_inp_versao(nome):
     """Força o text_input de estoque a virar um widget NOVO no próximo rerun
     (troca a key, incrementando um contador à parte) em vez de escrever
@@ -242,6 +382,19 @@ def _badge_sla(cor_status, titulo, valor_grande, pct_barra, rodape=""):
             {rodape_html}
         </div>
     """).strip()
+
+def _linha_estoque_simples(entidade, campo_estoque, nome, valor_atual, unidade, chave, filtros):
+    """Linha 'nome (atual: X un) + campo + salvar' - o mesmo padrão simples já
+    usado em Consumíveis, reaproveitado aqui em vez de criar um componente novo."""
+    c_a, c_b, c_c = st.columns([2, 1, 1])
+    c_a.write(f"**{nome}** (Atual: `{valor_atual:g} {unidade}`)")
+    novo = c_b.number_input("Saldo", min_value=0.0, value=float(valor_atual), step=1.0,
+                             key=f"est_{chave}", label_visibility="collapsed")
+    if c_c.button("Salvar", key=f"btn_est_{chave}"):
+        _atualizar(entidade, filtros, {campo_estoque: novo})
+        st.success(f"{nome} salvo!")
+        st.cache_data.clear()
+        st.rerun()
 
 def _fmt_projecao(consumo_dia, dias, unidade):
     """Consumo projetado (consumo_dia x dias) convertido pra unidade de compra:
@@ -289,6 +442,26 @@ def _tela_insumos(setor):
     if df.empty:
         st.warning("Nenhum insumo encontrado para este setor.")
         return
+
+    with st.expander("📋 Registrar Produção do Dia (desconto automático por lote)"):
+        col_d, col_l, col_r = st.columns([2, 2, 1])
+        with col_d:
+            data_prod = st.date_input("Data", value=datetime.now(FUSO_BR).date(), key="prod_data")
+        with col_l:
+            lotes_txt = st.text_input("Lotes produzidos", key="prod_lotes", placeholder="Ex: 20")
+        with col_r:
+            st.write("")
+            if st.button("✅ Registrar e Descontar", key="prod_registrar", use_container_width=True):
+                lotes = _parse_num(lotes_txt, padrao=None)
+                if lotes is None or lotes <= 0:
+                    st.error("Informe uma quantidade de lotes válida.")
+                else:
+                    resumo, limpeza = _registrar_producao_dia(setor, df, lotes, data_prod)
+                    txt_limpeza = " (dia de limpeza — quarta/sexta)" if limpeza else ""
+                    txt_resumo = " · ".join(resumo) if resumo else "nenhum insumo com fórmula automática foi afetado"
+                    st.success(f"Produção de {lotes:g} lotes registrada{txt_limpeza}! {txt_resumo}")
+                    st.cache_data.clear()
+                    st.rerun()
 
     linhas_projecao = []
     for _, r in df.iterrows():
@@ -388,9 +561,19 @@ def _tela_insumos(setor):
                 unsafe_allow_html=True,
             )
 
-            # Linha 3: ajuste direto - 1 campo + 1 botão. Insumos em kg
-            # digitam SEMPRE em gramas (sem seletor de unidade) - fecha de
-            # vez a ambiguidade kg/g que causava o bug de conversão.
+            # Toggle discreto de ativo/pausado - existe pra insumos alternativos
+            # (ex: só um dos dois Hidrofóbicos em uso por vez).
+            if st.button("▶️ Ativar" if pausado else "⏸️ Pausar", key=f"toggle_status_{nome}", use_container_width=True):
+                novo_status = "ativo" if pausado else "pausado"
+                _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"status": novo_status})
+                st.success(f"{nome} agora está **{novo_status}**.")
+                st.cache_data.clear()
+                st.rerun()
+
+            # 3 ações do card - Atual (corrigir) / Acrescentar (reposição) /
+            # Retirar (baixa manual) - cada uma num popover pequeno, sem
+            # inflar o card. Insumos em kg sempre em gramas (sem seletor de
+            # unidade) - fecha de vez a ambiguidade que causava o bug antigo.
             if unidade == "kg":
                 label_campo, placeholder = "Novo estoque (g)", "Ex: 390"
                 val_base_txt = str(int(round(estoque_g)))
@@ -398,80 +581,120 @@ def _tela_insumos(setor):
                 label_campo, placeholder = f"Novo estoque ({unidade})", "Ex: 2"
                 val_base_txt = f"{estoque_raw:g}".replace(".", ",")
 
-            # Key versionada: cada salvamento incrementa o contador (via
-            # _bump_inp_versao), então o widget seguinte nasce "novo" e usa
-            # o value= recém-calculado, sem violar a regra do Streamlit de
-            # não reescrever session_state de um widget já instanciado.
-            versao_inp = st.session_state.get(f"inp_{nome}_v", 0)
-            col_inp, col_save = st.columns([3, 1])
-            with col_inp:
-                # text_input (não number_input) porque number_input só aceita
-                # ponto como decimal - aqui aceitamos vírgula, e ignoramos
-                # texto solto tipo "kg"/"g" digitado junto por engano.
-                txt_val = st.text_input(
-                    label_campo, value=val_base_txt, key=f"inp_{nome}_{versao_inp}",
-                    label_visibility="collapsed", placeholder=placeholder,
-                )
-            with col_save:
-                if st.button("💾 Salvar", key=f"btn_save_{nome}", use_container_width=True):
-                    limpo = re.sub(r"[^0-9,.\-]", "", txt_val).strip()
-                    novo_val = _parse_num(limpo, padrao=None)
-                    if novo_val is None or novo_val < 0:
-                        st.error("Valor inválido — use apenas números (ex: 390 ou 2).")
-                    else:
-                        if unidade == "kg":
-                            val_gravar = int(round(novo_val))  # já digitado em gramas
-                            val_exibicao = f"{val_gravar/1000:.3f} kg ({val_gravar} g)"
-                        else:
-                            val_gravar = novo_val
-                            val_exibicao = f"{val_gravar:g} {unidade}"
-                        _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": val_gravar})
-                        # Evita a caixa ficar "presa" mostrando o texto digitado
-                        # antes, mesmo depois de já ter salvo (sem reescrever a
-                        # key do widget já instanciado - ver _bump_inp_versao).
-                        _bump_inp_versao(nome)
-                        st.success(f"Estoque de {nome} salvo como {val_exibicao}!")
-                        st.cache_data.clear()
-                        st.rerun()
+            col_atual, col_add, col_rem = st.columns(3)
 
-            # Ações rápidas - discretas, escondidas por padrão
-            if tem_acao_rapida:
-                with st.expander("▸ Ações rápidas (baixa de lote)"):
-                    if nome_k in ["zircônio", "zirconio"]:
-                        b1, b2 = st.columns(2)
-                        with b1:
-                            if st.button("📤 -1 Pastilha (6g)", key=f"bx1_{nome}"):
-                                novo_g = max(0, round(estoque_g - 6))
-                                _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": novo_g})
-                                _bump_inp_versao(nome)
-                                st.success(f"Baixa de 6g salva! Novo saldo: {novo_g} g ({novo_g/1000:.3f} kg)")
-                                st.cache_data.clear()
-                                st.rerun()
-                        with b2:
-                            if st.button("📤 -2 Pastilhas (12g)", key=f"bx2_{nome}"):
-                                novo_g = max(0, round(estoque_g - 12))
-                                _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": novo_g})
-                                _bump_inp_versao(nome)
-                                st.success(f"Baixa de 12g salva! Novo saldo: {novo_g} g ({novo_g/1000:.3f} kg)")
-                                st.cache_data.clear()
-                                st.rerun()
-                    elif nome_k in ["silício", "silicio"]:
-                        if st.button("📤 -1 Lote (5g)", key=f"bx1_{nome}"):
-                            novo_g = max(0, round(estoque_g - 5))
-                            _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": novo_g})
+            with col_atual:
+                with st.popover("📏 Atual", use_container_width=True):
+                    st.caption("Corrige o estoque pro valor medido agora (conferência).")
+                    # Key versionada: cada salvamento incrementa o contador (via
+                    # _bump_inp_versao) pra não reescrever session_state de um
+                    # widget já instanciado no mesmo ciclo do script.
+                    versao_inp = st.session_state.get(f"inp_{nome}_v", 0)
+                    txt_val = st.text_input(
+                        label_campo, value=val_base_txt, key=f"inp_{nome}_{versao_inp}", placeholder=placeholder,
+                    )
+                    if st.button("Confirmar correção", key=f"btn_atual_{nome}", use_container_width=True):
+                        limpo = re.sub(r"[^0-9,.\-]", "", txt_val).strip()
+                        novo_val = _parse_num(limpo, padrao=None)
+                        if novo_val is None or novo_val < 0:
+                            st.error("Valor inválido — use apenas números (ex: 390 ou 2).")
+                        else:
+                            if unidade == "kg":
+                                val_gravar = int(round(novo_val))
+                                val_exibicao = f"{val_gravar/1000:.3f} kg ({val_gravar} g)"
+                            else:
+                                val_gravar = novo_val
+                                val_exibicao = f"{val_gravar:g} {unidade}"
+                            _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": val_gravar})
+                            _append("HISTORICO_REPOSICAO", [setor, nome, "conferencia",
+                                    datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S"), val_gravar, unidade, val_gravar])
                             _bump_inp_versao(nome)
-                            st.success(f"Baixa de 5g salva! Novo saldo: {novo_g} g ({novo_g/1000:.3f} kg)")
+                            st.success(f"Estoque de {nome} corrigido para {val_exibicao}!")
                             st.cache_data.clear()
                             st.rerun()
-                    elif nome_k in ["cromo silício", "cromo silicio"]:
-                        if st.button("📤 -1 Troca (2,5g)", key=f"bx1_{nome}"):
-                            novo_g = max(0, round(estoque_g - 2.5))
-                            _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": novo_g})
-                            _bump_inp_versao(nome)
-                            st.success(f"Baixa de 2,5g salva! Novo saldo: {novo_g} g ({novo_g/1000:.3f} kg)")
+
+            with col_add:
+                with st.popover("➕ Acrescentar", use_container_width=True):
+                    st.caption("Registra chegada/compra de insumo novo.")
+                    txt_add = st.text_input(
+                        f"Quantidade recebida ({'g' if unidade == 'kg' else unidade})",
+                        key=f"add_{nome}", placeholder="Ex: 1000",
+                    )
+                    if st.button("Confirmar entrada", key=f"btn_add_{nome}", use_container_width=True):
+                        limpo = re.sub(r"[^0-9,.\-]", "", txt_add).strip()
+                        qtd = _parse_num(limpo, padrao=None)
+                        if qtd is None or qtd <= 0:
+                            st.error("Informe uma quantidade válida.")
+                        else:
+                            novo = int(round(estoque_g + qtd)) if unidade == "kg" else (estoque_raw + qtd)
+                            _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": novo})
+                            _append("HISTORICO_REPOSICAO", [setor, nome, "reposicao",
+                                    datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S"), qtd,
+                                    "g" if unidade == "kg" else unidade, novo])
+                            st.success(f"+{qtd:g} {'g' if unidade == 'kg' else unidade} adicionados a {nome}!")
                             st.cache_data.clear()
                             st.rerun()
-            elif consumo_dia and consumo_dia > 0:
+
+            with col_rem:
+                with st.popover("➖ Retirar", use_container_width=True):
+                    st.caption("Baixa manual avulsa (fora do fluxo de lotes).")
+                    if tem_acao_rapida:
+                        st.write("**Atalhos rápidos:**")
+                        if nome_k in ["zircônio", "zirconio"]:
+                            b1, b2 = st.columns(2)
+                            with b1:
+                                if st.button("-1 Pastilha (6g)", key=f"bx1_{nome}", use_container_width=True):
+                                    novo_g = max(0, round(estoque_g - 6))
+                                    _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": novo_g})
+                                    _bump_inp_versao(nome)
+                                    st.success(f"Baixa de 6g salva! Novo saldo: {novo_g} g")
+                                    st.cache_data.clear()
+                                    st.rerun()
+                            with b2:
+                                if st.button("-2 Pastilhas (12g)", key=f"bx2_{nome}", use_container_width=True):
+                                    novo_g = max(0, round(estoque_g - 12))
+                                    _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": novo_g})
+                                    _bump_inp_versao(nome)
+                                    st.success(f"Baixa de 12g salva! Novo saldo: {novo_g} g")
+                                    st.cache_data.clear()
+                                    st.rerun()
+                        elif nome_k in ["silício", "silicio"]:
+                            if st.button("-1 Lote (5g)", key=f"bx1_{nome}", use_container_width=True):
+                                novo_g = max(0, round(estoque_g - 5))
+                                _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": novo_g})
+                                _bump_inp_versao(nome)
+                                st.success(f"Baixa de 5g salva! Novo saldo: {novo_g} g")
+                                st.cache_data.clear()
+                                st.rerun()
+                        elif nome_k in ["cromo silício", "cromo silicio"]:
+                            if st.button("-1 Troca (2,5g)", key=f"bx1_{nome}", use_container_width=True):
+                                novo_g = max(0, round(estoque_g - 2.5))
+                                _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": novo_g})
+                                _bump_inp_versao(nome)
+                                st.success(f"Baixa de 2,5g salva! Novo saldo: {novo_g} g")
+                                st.cache_data.clear()
+                                st.rerun()
+                        st.markdown("---")
+                    txt_rem = st.text_input(
+                        f"Quantidade a retirar ({'g' if unidade == 'kg' else unidade})",
+                        key=f"rem_{nome}", placeholder="Ex: 6",
+                    )
+                    if st.button("Confirmar retirada", key=f"btn_rem_{nome}", use_container_width=True):
+                        limpo = re.sub(r"[^0-9,.\-]", "", txt_rem).strip()
+                        qtd = _parse_num(limpo, padrao=None)
+                        if qtd is None or qtd <= 0:
+                            st.error("Informe uma quantidade válida.")
+                        else:
+                            novo = max(0, round(estoque_g - qtd)) if unidade == "kg" else max(0.0, estoque_raw - qtd)
+                            _atualizar("INSUMOS", {"setor": setor, "nome": nome}, {"estoque_atual": novo})
+                            _append("HISTORICO_REPOSICAO", [setor, nome, "retirada_manual",
+                                    datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S"), qtd,
+                                    "g" if unidade == "kg" else unidade, novo])
+                            st.success(f"-{qtd:g} {'g' if unidade == 'kg' else unidade} retirados de {nome}!")
+                            st.cache_data.clear()
+                            st.rerun()
+
+            if not tem_acao_rapida and consumo_dia and consumo_dia > 0:
                 st.caption(f"Consumo diário previsto: **{consumo_dia:g} {unidade}/dia**")
 
     if linhas_projecao:
@@ -482,6 +705,64 @@ def _tela_insumos(setor):
                 "consumo/dia definido não entram aqui."
             )
             st.dataframe(pd.DataFrame(linhas_projecao), use_container_width=True, hide_index=True)
+
+    st.markdown("---")
+    st.subheader("📅 Consumo Diário (últimos registros)")
+    df_prod = _load("PRODUCAO_DIARIA")
+    df_prod = df_prod[df_prod["setor"].astype(str).str.strip() == setor]
+    if df_prod.empty:
+        st.caption("Nenhuma produção registrada ainda — use \"Registrar Produção do Dia\" acima.")
+    else:
+        tabela = df_prod.tail(30).iloc[::-1].rename(columns={
+            "data": "Data", "lotes": "Lotes feitos", "limpeza": "Limpeza?",
+            "zirconio_g": "Zircônio (g)", "silicio_g": "Silício (g)",
+            "cromo_silicio_g": "Cromo Silício (g)", "ito_g": "ITO (g)",
+            "hidrofobico_und": "Hidrofóbico (und)", "super_hidrofobico_und": "Super Hidrofóbico (und)",
+            "crystal_und": "Crystal de quartz (und)",
+        }).drop(columns=["setor"])
+        st.dataframe(tabela, use_container_width=True, hide_index=True)
+
+# ---------------------------------------------------------------------------
+# TELA: PREPARO QUÍMICO (SL-501) - checklist do processo + estoque de galões
+# ---------------------------------------------------------------------------
+def _tela_preparo_quimico(setor):
+    st.info("🧪 Sequência de montagem da SL-501 — processo de referência, cuba a cuba.")
+
+    st.dataframe(pd.DataFrame(PREPARO_QUIMICO_SL501), use_container_width=True, hide_index=True)
+
+    st.markdown("---")
+    col_formula, col_estoque = st.columns(2)
+
+    with col_formula:
+        with st.container(border=True):
+            st.subheader("🧮 Fórmula de Dosagem (Soda)")
+            f = FORMULA_DOSAGEM_SODA
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Concentração atual", f"{f['concentracao_atual']}")
+            c2.metric("Soda desejada", f"{f['desejada']}")
+            c3.metric("Litragem da cuba", f"{f['litragem_cuba']}")
+            c4.metric("Colocar", f["qtd_colocar"])
+            st.caption(f"⚠️ {f['nota_1']}")
+            st.write("**Misturas de referência:**")
+            for nome_mistura, qtd in f["misturas"]:
+                st.write(f"- {nome_mistura} = {qtd}")
+            st.caption(f"💡 {f['nota_2']}")
+
+    with col_estoque:
+        with st.container(border=True):
+            st.subheader("🛢️ Estoque de Galões")
+            df_pq = _load("PREPARO_QUIMICO")
+            df_pq = df_pq[df_pq["setor"].astype(str).str.strip() == setor]
+            if df_pq.empty:
+                st.caption("Nenhum item cadastrado para este setor.")
+            for _, r in df_pq.iterrows():
+                nome_g = str(r["nome"]).strip()
+                un_g = str(r["unidade"]).strip() or "L"
+                val_g = _parse_num(r["estoque"])
+                _linha_estoque_simples(
+                    "PREPARO_QUIMICO", "estoque", nome_g, val_g, un_g,
+                    chave=f"pq_{nome_g}", filtros={"setor": setor, "nome": nome_g},
+                )
 
 # ---------------------------------------------------------------------------
 # TELA 2: CONTROLE DE PROCESSO (VERNIZ & PRIME)
@@ -624,14 +905,125 @@ def _tela_limpeza(setor):
                 for _, r in df_con.iterrows():
                     nome_c = str(r["nome"]).strip()
                     est_c = _parse_num(r["estoque"])
-                    c_a, c_b, c_c = st.columns([2, 1, 1])
-                    c_a.write(f"**{nome_c}** (Atual: `{est_c:g}`)")
-                    novo_est = c_b.number_input("Saldo", min_value=0.0, value=float(est_c), step=1.0, key=f"con_{nome_c}", label_visibility="collapsed")
-                    if c_c.button("Salvar", key=f"bcon_{nome_c}"):
-                        _atualizar("CONSUMIVEIS", {"setor": setor, "nome": nome_c}, {"estoque": novo_est})
-                        st.success(f"{nome_c} salvo!")
-                        st.cache_data.clear()
-                        st.rerun()
+                    _linha_estoque_simples(
+                        "CONSUMIVEIS", "estoque", nome_c, est_c, "und",
+                        chave=f"con_{nome_c}", filtros={"setor": setor, "nome": nome_c},
+                    )
+
+# ---------------------------------------------------------------------------
+# TELA: POLIMENTO (setor Surfaçagem) - 3 polidoras, registro por lote/toque
+# ---------------------------------------------------------------------------
+def _registrar_ocorrencia_polimento(setor, polidora, material, qtd, tipo, conferente):
+    qtd_fmt = int(qtd) if float(qtd).is_integer() else qtd
+    _append("POLIMENTO_OCORRENCIAS", [
+        setor, datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S"), polidora,
+        material, qtd_fmt, tipo, (conferente or "").strip() or "—",
+    ])
+    st.success(f"Registrado: {polidora} · {material} · {tipo} · qtd {qtd_fmt}")
+    st.cache_data.clear()
+    st.rerun()
+
+def _card_polidora(setor, polidora, df_oc, df_discos):
+    with st.container(border=True):
+        st.subheader(polidora)
+
+        sub = df_oc[df_oc["polidora"] == polidora]
+        total = sub["quantidade_num"].sum() if not sub.empty else 0.0
+        pior_material = sub.groupby("material")["quantidade_num"].sum().idxmax() if not sub.empty else "—"
+
+        c1, c2 = st.columns(2)
+        c1.metric("Lentes c/ polimento ruim", f"{total:g}")
+        c2.metric("Material mais problemático", pior_material)
+
+        material = st.selectbox("Material", MATERIAIS_POLIMENTO, key=f"pol_mat_{polidora}")
+        tipo = st.selectbox("Tipo de má-polimento", TIPOS_MA_POLIMENTO, key=f"pol_tipo_{polidora}")
+        conferente = st.text_input("Conferente", key=f"pol_conf_{polidora}", placeholder="Quem conferiu")
+
+        c_a, c_b, c_c = st.columns([1, 2, 1])
+        with c_a:
+            if st.button("👆 +1", key=f"pol_mais1_{polidora}", use_container_width=True,
+                         help="Registro de 1 toque: quantidade 1"):
+                _registrar_ocorrencia_polimento(setor, polidora, material, 1, tipo, conferente)
+        with c_b:
+            qtd_txt = st.text_input(
+                "Qtd do lote", key=f"pol_qtd_{polidora}", label_visibility="collapsed",
+                placeholder="Qtd do lote + Enter/Registrar",
+            )
+        with c_c:
+            if st.button("Registrar", key=f"pol_reg_{polidora}", use_container_width=True):
+                qtd = _parse_num(qtd_txt, padrao=None)
+                if qtd is None or qtd <= 0:
+                    st.error("Informe uma quantidade válida (ex: 5).")
+                else:
+                    _registrar_ocorrencia_polimento(setor, polidora, material, qtd, tipo, conferente)
+
+        st.markdown("---")
+        linha_disco = df_discos[df_discos["polidora"] == polidora]
+        dt_ultima = str(linha_disco.iloc[0]["data_ultima_troca"]).strip() if not linha_disco.empty else ""
+        prox = _proxima_data(dt_ultima, "mensal", "")
+        st.caption(f"🪩 Disco de polimento — última troca: `{dt_ultima or '—'}` · próxima: `{prox.strftime('%d/%m/%Y')}`")
+        if st.button("✅ Confirmar troca feita hoje", key=f"pol_disco_{polidora}", use_container_width=True):
+            nova_prox = _proxima_data(HOJE_STR, "mensal", "").strftime("%d/%m/%Y")
+            _atualizar("POLIMENTO_DISCOS", {"setor": setor, "polidora": polidora},
+                       {"data_ultima_troca": HOJE_STR, "proxima_troca": nova_prox})
+            st.success(f"Troca de disco da {polidora} registrada hoje!")
+            st.cache_data.clear()
+            st.rerun()
+
+def _tela_polimento(setor):
+    st.info("💎 **Controle de Polimento** — registre por lote (digite a quantidade) ou por toque (+1). Sem status de aberto/resolvido: é um log histórico.")
+
+    df_oc = _load("POLIMENTO_OCORRENCIAS")
+    df_oc = df_oc[df_oc["setor"].astype(str).str.strip() == setor].copy()
+    if not df_oc.empty:
+        df_oc["quantidade_num"] = df_oc["quantidade"].apply(lambda v: _parse_num(v, 1.0))
+
+    df_discos = _load("POLIMENTO_DISCOS")
+    df_discos = df_discos[df_discos["setor"].astype(str).str.strip() == setor]
+
+    cols = st.columns(3)
+    for col, polidora in zip(cols, POLIDORAS):
+        with col:
+            _card_polidora(setor, polidora, df_oc, df_discos)
+
+    st.markdown("---")
+    st.subheader("📊 Indicadores")
+    g1, g2 = st.columns(2)
+    with g1:
+        st.write("**Lentes Reprovadas por Polidora**")
+        if not df_oc.empty:
+            st.bar_chart(df_oc.groupby("polidora")["quantidade_num"].sum())
+        else:
+            st.caption("Sem registros ainda.")
+    with g2:
+        st.write("**Ranking de Perda/Rejeição por Material**")
+        if not df_oc.empty:
+            st.bar_chart(df_oc.groupby("material")["quantidade_num"].sum().sort_values(ascending=False))
+        else:
+            st.caption("Sem registros ainda.")
+
+    st.markdown("---")
+    st.subheader("📋 Log de Ocorrências")
+    if not df_oc.empty:
+        st.dataframe(df_oc.iloc[::-1].drop(columns=["quantidade_num"]), use_container_width=True, hide_index=True)
+    else:
+        st.caption("Nenhuma ocorrência registrada ainda.")
+
+# ---------------------------------------------------------------------------
+# Registro de sub-abas por setor - cada setor tem seu próprio conjunto, em
+# vez de assumir que todo setor usa Insumos/Processo/Limpeza.
+# ---------------------------------------------------------------------------
+SETORES_ABAS = {
+    "Anti Reflexo": [
+        ("📦 Estoque de Insumos & Lotes", _tela_insumos),
+        ("🧪 Controle de Processo (Verniz & Prime)", _tela_processo),
+        ("🧹 Limpeza, Filtros & Consumíveis", _tela_limpeza),
+        ("🧫 Preparo Químico", _tela_preparo_quimico),
+    ],
+    "Surfaçagem": [
+        ("💎 Polimento", _tela_polimento),
+    ],
+}
 
 def render():
     try:
@@ -643,16 +1035,18 @@ def render():
     with col_t1:
         st.title("🏭 Controle de Setores")
     with col_t2:
-        setor_selecionado = st.selectbox("Setor Operacional:", ["Anti Reflexo", "Surfaçagem", "Montagem", "Coloração"], index=0, key="cs_setor_topo")
+        setor_selecionado = st.selectbox(
+            "Setor Operacional:", list(SETORES_ABAS.keys()), index=0, key="cs_setor_topo",
+        )
 
     st.markdown("---")
 
-    tab1, tab2, tab3 = st.tabs([
-        "📦 Estoque de Insumos & Lotes",
-        "🧪 Controle de Processo (Verniz & Prime)",
-        "🧹 Limpeza, Filtros & Consumíveis"
-    ])
+    abas_do_setor = SETORES_ABAS.get(setor_selecionado, [])
+    if not abas_do_setor:
+        st.info(f"Nenhuma sub-aba configurada ainda para o setor **{setor_selecionado}**.")
+        return
 
-    with tab1: _tela_insumos(setor_selecionado)
-    with tab2: _tela_processo(setor_selecionado)
-    with tab3: _tela_limpeza(setor_selecionado)
+    tabs = st.tabs([titulo for titulo, _ in abas_do_setor])
+    for tab, (_, funcao_tela) in zip(tabs, abas_do_setor):
+        with tab:
+            funcao_tela(setor_selecionado)
