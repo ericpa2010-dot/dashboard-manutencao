@@ -13,103 +13,19 @@ import textwrap
 import plotly.express as px
 import plotly.graph_objects as go
 import controle_setores
+import tema
 
 # Configuração da página
 st.set_page_config(page_title="Gestão de Manutenção", page_icon="🛠️", layout="wide")
 
-# CSS: Design System Escuro Futurista
-st.markdown("""
-   <style>
-   #MainMenu {visibility: hidden;}
-   footer {visibility: hidden;}
+# CSS: tema compartilhado (claro/escuro) - ver tema.py
+st.markdown(tema.css_global(), unsafe_allow_html=True)
 
-   .stApp {
-       background-color: #0F172A;
-       color: #F8FAFC;
-       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-   }
-
-   h1, h2, h3, h4, h5, h6, label {
-       color: #F8FAFC !important;
-       font-weight: 700 !important;
-   }
-
-   div[data-baseweb="tab-list"] {
-       gap: 8px;
-       background-color: #0F172A;
-   }
-
-   button[data-baseweb="tab"] {
-       background-color: #1E293B !important;
-       color: #94A3B8 !important;
-       border-radius: 8px !important;
-       padding: 12px 16px !important;
-       font-weight: 600 !important;
-       border: 1px solid #334155 !important;
-   }
-
-   button[aria-selected="true"] {
-       background-color: #38BDF8 !important;
-       color: #0F172A !important;
-       font-weight: 800 !important;
-       border: 1px solid #38BDF8 !important;
-   }
-
-   div[data-testid="stMetric"] {
-       background-color: #1E293B;
-       border: 1px solid #334155;
-       border-radius: 12px;
-       padding: 12px 16px;
-   }
-   div[data-testid="stMetricLabel"] {
-       font-size: 0.8rem !important;
-       color: #94A3B8 !important;
-       font-weight: 600 !important;
-   }
-   div[data-testid="stMetricValue"] {
-       font-size: 1.5rem !important;
-       color: #38BDF8 !important;
-       font-weight: 800 !important;
-   }
-
-   .stTextInput > div > div > input, 
-   .stSelectbox > div > div, 
-   .stTextArea textarea {
-       background-color: #1E293B !important;
-       color: #F8FAFC !important;
-       border: 1px solid #334155 !important;
-       border-radius: 8px !important;
-   }
-
-   /* Botões Principais */
-   div.stButton > button {
-       background-color: #38BDF8 !important;
-       color: #0F172A !important;
-       font-weight: 800 !important;
-       border-radius: 8px !important;
-       padding: 10px 20px !important;
-       border: none !important;
-       transition: all 0.2s ease;
-   }
-   div.stButton > button:hover {
-       background-color: #7DD3FC !important;
-       color: #0F172A !important;
-       transform: scale(1.01);
-   }
-
-   hr {
-       border-color: #334155 !important;
-       margin: 1rem 0 !important;
-   }
-
-   div[data-testid="stDataFrame"] {
-       background-color: #1E293B;
-       border: 1px solid #334155;
-       border-radius: 12px;
-       padding: 8px;
-   }
-   </style>
-""", unsafe_allow_html=True)
+col_titulo_app, col_tema_app = st.columns([6, 1])
+with col_titulo_app:
+    st.caption("🛠️ Gestão de Manutenção")
+with col_tema_app:
+    tema.botao_alternar_tema()
 
 # Estado global para regras de turno
 if "hora_inicio_turno" not in st.session_state:
@@ -377,26 +293,27 @@ def criar_grafico_pareto_limpo(df_input, coluna, titulo, top_n=10):
     counts['Acumulado'] = counts['Ocorrências'].cumsum()
     counts['% Acumulado'] = (counts['Acumulado'] / counts['Ocorrências'].sum()) * 100
 
+    cg = tema.cores()
     fig = go.Figure()
     fig.add_trace(go.Bar(
         x=counts[coluna], y=counts['Ocorrências'], name="Qtd Chamados",
-        marker_color="#38BDF8", text=counts['Ocorrências'], textposition="outside",
-        textfont=dict(size=11, color="#F8FAFC")
+        marker_color=cg["primaria"], text=counts['Ocorrências'], textposition="outside",
+        textfont=dict(size=11, color=cg["texto"])
     ))
     fig.add_trace(go.Scatter(
         x=counts[coluna], y=counts['% Acumulado'], name="% Acumulado", yaxis="y2",
         mode="lines+markers", line=dict(color="#F43F5E", width=3), marker=dict(size=7, color="#F43F5E")
     ))
-    fig.add_hline(y=80, yref="y2", line_dash="dash", line_color="#FBBF24", line_width=2)
+    fig.add_hline(y=80, yref="y2", line_dash="dash", line_color="#F59E0B", line_width=2)
 
     fig.update_layout(
-        template="plotly_dark",
-        title=dict(text=f"<b>{titulo}</b>", font=dict(size=15, color="#F8FAFC")),
-        xaxis=dict(tickfont=dict(size=10, color="#CBD5E1"), tickangle=-15, showgrid=False),
-        yaxis=dict(title=dict(text="<b>Qtd Chamados</b>", font=dict(size=11, color="#94A3B8")), tickfont=dict(size=10, color="#CBD5E1"), gridcolor="#334155", showgrid=True),
-        yaxis2=dict(title=dict(text="<b>% Acumulado</b>", font=dict(size=11, color="#94A3B8")), tickfont=dict(size=10, color="#CBD5E1"), overlaying="y", side="right", range=[0, 105], showgrid=False),
-        legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1, font=dict(size=10, color="#F8FAFC")),
-        margin=dict(l=10, r=10, t=40, b=40), height=380, paper_bgcolor="#1E293B", plot_bgcolor="#1E293B"
+        template=tema.plotly_template(),
+        title=dict(text=f"<b>{titulo}</b>", font=dict(size=15, color=cg["texto"])),
+        xaxis=dict(tickfont=dict(size=10, color=cg["texto_muted"]), tickangle=-15, showgrid=False),
+        yaxis=dict(title=dict(text="<b>Qtd Chamados</b>", font=dict(size=11, color=cg["texto_muted"])), tickfont=dict(size=10, color=cg["texto_muted"]), gridcolor=cg["borda"], showgrid=True),
+        yaxis2=dict(title=dict(text="<b>% Acumulado</b>", font=dict(size=11, color=cg["texto_muted"])), tickfont=dict(size=10, color=cg["texto_muted"]), overlaying="y", side="right", range=[0, 105], showgrid=False),
+        legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1, font=dict(size=10, color=cg["texto"])),
+        margin=dict(l=10, r=10, t=40, b=40), height=380, paper_bgcolor=cg["superficie"], plot_bgcolor=cg["superficie"]
     )
     return fig
 
@@ -419,14 +336,15 @@ tab_abertura, tab_dash, tab_gestao, tab_setores = st.tabs(["📌 Abrir Chamado",
 # ABA 1: ABERTURA DE CHAMADO (MANUAL 1º LUGAR, VOZ 2º LUGAR)
 # ==========================================
 with tab_abertura:
-    
-    st.markdown("""
-        <div style="border-bottom: 1px solid #334155; padding-bottom: 12px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
+    _c = tema.cores()
+
+    st.markdown(f"""
+        <div style="border-bottom: 1px solid {_c['borda']}; padding-bottom: 12px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
             <div>
-                <h2 style="margin: 0; color: #F8FAFC; font-size: 1.4rem;">📌 Abertura de Chamado & Diagnóstico</h2>
-                <p style="margin: 4px 0 0 0; color: #94A3B8; font-size: 0.85rem;">Escolha como prefere registrar o chamado de manutenção:</p>
+                <h2 style="margin: 0; color: {_c['texto']}; font-size: 1.4rem;">📌 Abertura de Chamado & Diagnóstico</h2>
+                <p style="margin: 4px 0 0 0; color: {_c['texto_muted']}; font-size: 0.85rem;">Escolha como prefere registrar o chamado de manutenção:</p>
             </div>
-            <span style="background: rgba(56, 189, 248, 0.15); color: #38BDF8; padding: 4px 12px; border-radius: 9999px; font-size: 0.75rem; font-weight: 700; border: 1px solid rgba(56, 189, 248, 0.3);">
+            <span style="background: {_c['primaria_fraca']}; color: {_c['primaria']}; padding: 4px 12px; border-radius: 9999px; font-size: 0.75rem; font-weight: 700; border: 1px solid {_c['primaria']}44;">
                 ⚡ Rápido e Seguro
             </span>
         </div>
@@ -450,9 +368,9 @@ with tab_abertura:
 
     # MODO 1 (PADRÃO / 1º LUGAR): ESCRITA MANUAL COMPLETA
     if st.session_state["modo_selecionado"] == "manual":
-        st.markdown("""
-            <div style="background-color: #1E293B; border: 1px solid #334155; border-radius: 16px; padding: 16px 20px; margin-bottom: 16px;">
-                <div style="color: #38BDF8; font-size: 0.8rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em;">
+        st.markdown(f"""
+            <div style="background-color: {_c['superficie']}; border: 1px solid {_c['borda']}; border-radius: 16px; padding: 16px 20px; margin-bottom: 16px;">
+                <div style="color: {_c['primaria']}; font-size: 0.8rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em;">
                     1. Identificação do Solicitante
                 </div>
             </div>
@@ -467,8 +385,8 @@ with tab_abertura:
                 area = st.selectbox("Seu Setor / Área *", ["Surfaçagem", "Coloração", "Tratamento AR", "Montagem", "Estoque", "Expedição", "TI", "Geral"])
 
             st.markdown("---")
-            st.markdown("""
-                <div style="color: #38BDF8; font-size: 0.8rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; margin: 16px 0 10px 0;">
+            st.markdown(f"""
+                <div style="color: {_c['primaria']}; font-size: 0.8rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; margin: 16px 0 10px 0;">
                     2. Diagnóstico Técnico Inicial
                 </div>
             """, unsafe_allow_html=True)
@@ -489,34 +407,34 @@ with tab_abertura:
             codigo_alarme = st.text_input("Código ou Mensagem de Erro no Painel (se houver)", placeholder="Ex: Erro E-104 / Alarme Pressão Baixa / Não tem código")
 
             st.markdown("---")
-            st.markdown("""
-                <div style="color: #38BDF8; font-size: 0.8rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; margin: 16px 0 10px 0;">
+            st.markdown(f"""
+                <div style="color: {_c['primaria']}; font-size: 0.8rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; margin: 16px 0 10px 0;">
                     3. Situação Real da Máquina & Gravidade
                 </div>
             """, unsafe_allow_html=True)
 
-            st.markdown("""
+            st.markdown(f"""
                 <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px;">
-                    <div style="background-color: #0F172A; border: 2px solid #EF4444; border-radius: 10px; padding: 12px;">
+                    <div style="background-color: {_c['superficie_alt']}; border: 2px solid #EF4444; border-radius: 10px; padding: 12px;">
                         <div style="display: flex; justify-content: space-between; align-items: center;">
                             <b style="color: #F87171; font-size: 0.9rem;">🔴 1. MÁQUINA TOTALMENTE PARADA</b>
-                            <span style="background: rgba(239, 68, 68, 0.2); color: #FCA5A5; padding: 2px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 800;">SLA: Até 4 Horas</span>
+                            <span style="background: rgba(239, 68, 68, 0.15); color: #F87171; padding: 2px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 800;">SLA: Até 4 Horas</span>
                         </div>
-                        <div style="color: #CBD5E1; font-size: 0.75rem; margin-top: 4px;">A máquina <b>não funciona 100%</b> e a produção do setor está <b>bloqueada sem máquina reserva</b>.</div>
+                        <div style="color: {_c['texto_muted']}; font-size: 0.75rem; margin-top: 4px;">A máquina <b>não funciona 100%</b> e a produção do setor está <b>bloqueada sem máquina reserva</b>.</div>
                     </div>
-                    <div style="background-color: #0F172A; border: 1px solid #F59E0B; border-radius: 10px; padding: 12px;">
+                    <div style="background-color: {_c['superficie_alt']}; border: 1px solid #F59E0B; border-radius: 10px; padding: 12px;">
                         <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <b style="color: #FBBF24; font-size: 0.9rem;">🟡 2. OPERANDO COM FALHA / LENTIDÃO</b>
-                            <span style="background: rgba(245, 158, 11, 0.2); color: #FDE68A; padding: 2px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 800;">SLA: Até 8 Horas</span>
+                            <b style="color: #D97706; font-size: 0.9rem;">🟡 2. OPERANDO COM FALHA / LENTIDÃO</b>
+                            <span style="background: rgba(245, 158, 11, 0.15); color: #D97706; padding: 2px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 800;">SLA: Até 8 Horas</span>
                         </div>
-                        <div style="color: #CBD5E1; font-size: 0.75rem; margin-top: 4px;">A máquina continua rodando com ruído, lentidão ou há outra máquina absorvendo a produção.</div>
+                        <div style="color: {_c['texto_muted']}; font-size: 0.75rem; margin-top: 4px;">A máquina continua rodando com ruído, lentidão ou há outra máquina absorvendo a produção.</div>
                     </div>
-                    <div style="background-color: #0F172A; border: 1px solid #10B981; border-radius: 10px; padding: 12px;">
+                    <div style="background-color: {_c['superficie_alt']}; border: 1px solid #10B981; border-radius: 10px; padding: 12px;">
                         <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <b style="color: #34D399; font-size: 0.9rem;">🟢 3. AJUSTE / PREVENTIVA / SEM PARADA</b>
-                            <span style="background: rgba(16, 185, 129, 0.2); color: #A7F3D0; padding: 2px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 800;">SLA: Até 48 Horas (2 Dias)</span>
+                            <b style="color: #10B981; font-size: 0.9rem;">🟢 3. AJUSTE / PREVENTIVA / SEM PARADA</b>
+                            <span style="background: rgba(16, 185, 129, 0.15); color: #10B981; padding: 2px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 800;">SLA: Até 48 Horas (2 Dias)</span>
                         </div>
-                        <div style="color: #CBD5E1; font-size: 0.75rem; margin-top: 4px;">Troca de manta, lâmpada, lubrificação, reaperto ou melhoria programada sem impacto imediato.</div>
+                        <div style="color: {_c['texto_muted']}; font-size: 0.75rem; margin-top: 4px;">Troca de manta, lâmpada, lubrificação, reaperto ou melhoria programada sem impacto imediato.</div>
                     </div>
                 </div>
             """, unsafe_allow_html=True)
@@ -601,10 +519,10 @@ with tab_abertura:
 
     # MODO 2: ABERTURA POR VOZ (INTEGRADO & COM PROCESSAMENTO DIRETO)
     else:
-        st.markdown("""
-            <div style="background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%); border: 1px solid #334155; border-radius: 16px; padding: 20px; text-align: center; margin-bottom: 20px;">
-                <h4 style="color: #F8FAFC; margin: 0 0 6px 0;">🎙️ Gravador de Áudio & Reconhecimento de Voz</h4>
-                <p style="color: #94A3B8; font-size: 0.8rem; margin: 0;">Clique no microfone para falar seu relato e a IA registrará o chamado.</p>
+        st.markdown(f"""
+            <div style="background: linear-gradient(135deg, {_c['superficie']} 0%, {_c['fundo']} 100%); border: 1px solid {_c['borda']}; border-radius: 16px; padding: 20px; text-align: center; margin-bottom: 20px;">
+                <h4 style="color: {_c['texto']}; margin: 0 0 6px 0;">🎙️ Gravador de Áudio & Reconhecimento de Voz</h4>
+                <p style="color: {_c['texto_muted']}; font-size: 0.8rem; margin: 0;">Clique no microfone para falar seu relato e a IA registrará o chamado.</p>
             </div>
         """, unsafe_allow_html=True)
 
@@ -800,24 +718,26 @@ with tab_dash:
         inicio_mes = agora_naive_geral.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         inicio_ano = agora_naive_geral.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
 
+        _cd = tema.cores()
+
         def render_card_periodo(titulo, dt_limite):
             if "dt_abertura" in df_validos.columns and df_validos["dt_abertura"].notna().any():
                 sub = df_validos[df_validos["dt_abertura"] >= dt_limite]
             else:
                 sub = df_validos
-                
+
             total_periodo = len(sub)
             abertos_periodo = len(sub[sub["Status_Clean"].isin(["Pendente", "Atuando"])])
             concluidos_periodo = total_periodo - abertos_periodo
-            cor_aberto = "#FBBF24" if abertos_periodo > 0 else "#94A3B8"
-            
+            cor_aberto = "#F59E0B" if abertos_periodo > 0 else _cd["texto_muted"]
+
             return textwrap.dedent(f"""
-                <div style="background-color:#1E293B; border:1px solid #334155; padding:14px; border-radius:12px; text-align:center;">
-                    <div style="color:#94A3B8; font-size:0.85rem; font-weight:700; text-transform:uppercase;">{titulo}</div>
-                    <div style="color:#38BDF8; font-size:2rem; font-weight:800; margin:4px 0;">{total_periodo}</div>
-                    <div style="margin-top:8px; font-size:0.8rem; font-weight:600; display:flex; justify-content:space-around; border-top:1px solid #334155; padding-top:8px;">
+                <div style="background-color:{_cd['superficie']}; border:1px solid {_cd['borda']}; padding:14px; border-radius:12px; text-align:center;">
+                    <div style="color:{_cd['texto_muted']}; font-size:0.85rem; font-weight:700; text-transform:uppercase;">{titulo}</div>
+                    <div style="color:{_cd['primaria']}; font-size:2rem; font-weight:800; margin:4px 0;">{total_periodo}</div>
+                    <div style="margin-top:8px; font-size:0.8rem; font-weight:600; display:flex; justify-content:space-around; border-top:1px solid {_cd['borda']}; padding-top:8px;">
                         <span style="color:{cor_aberto};">🟡 <b>{abertos_periodo}</b> em aberto</span>
-                        <span style="color:#22C55E;">🟢 <b>{concluidos_periodo}</b> concluídos</span>
+                        <span style="color:#10B981;">🟢 <b>{concluidos_periodo}</b> concluídos</span>
                     </div>
                 </div>
             """).strip()
@@ -839,7 +759,7 @@ with tab_dash:
             
             if qtd_ativos == 0:
                 pct_saude = 100.0
-                cor_status = "#22C55E"
+                cor_status = "#10B981"
                 texto_status = "100.0% (Fila em Dia)"
             else:
                 somas_saude = []
@@ -851,26 +771,26 @@ with tab_dash:
                         pct_individual = max(0.0, (restante / meta_horas) * 100.0)
                         somas_saude.append(pct_individual)
                     else: somas_saude.append(100.0)
-                
+
                 pct_saude = sum(somas_saude) / len(somas_saude) if somas_saude else 100.0
-                if pct_saude > 50.0: cor_status = "#22C55E"
+                if pct_saude > 50.0: cor_status = "#10B981"
                 elif pct_saude > 20.0: cor_status = "#F59E0B"
                 else: cor_status = "#EF4444"
                 texto_status = f"{pct_saude:.1f}% ({qtd_ativos} ativos)"
 
             html_card = textwrap.dedent(f"""
-                <div style="background-color:#1E293B; border:2px solid {cor_status}; padding:15px; border-radius:12px; margin-bottom:10px;">
+                <div style="background-color:{_cd['superficie']}; border:2px solid {cor_status}; padding:15px; border-radius:12px; margin-bottom:10px;">
                     <div style="display:flex; justify-content:space-between; align-items:center;">
                         <span style="font-weight:800; color:{cor_status}; font-size:1.1rem;">{nome.upper()}</span>
-                        <span style="font-size:0.8rem; color:#94A3B8; font-weight:600;">Meta: {formatar_tempo_legivel(meta_horas)}</span>
+                        <span style="font-size:0.8rem; color:{_cd['texto_muted']}; font-weight:600;">Meta: {formatar_tempo_legivel(meta_horas)}</span>
                     </div>
                     <div style="font-size:1.8rem; font-weight:800; color:{cor_status}; margin:6px 0;">{texto_status}</div>
-                    <div style="background-color:#334155; border-radius:6px; height:12px; width:100%; margin:10px 0; overflow:hidden;">
+                    <div style="background-color:{_cd['borda']}; border-radius:6px; height:12px; width:100%; margin:10px 0; overflow:hidden;">
                         <div style="background-color:{cor_status}; width:{pct_saude:.1f}%; height:100%; border-radius:6px; transition: width 0.5s ease;"></div>
                     </div>
-                    <div style="margin-top:8px; padding-top:8px; border-top:1px solid #334155; font-size:0.8rem; color:#CBD5E1; display:flex; justify-content:space-between;">
-                        <span>🟣 Atuando: <b style="color:#C084FC;">{qtd_atuando}</b></span>
-                        <span>🟡 Pendente: <b style="color:#FBBF24;">{qtd_pendente}</b></span>
+                    <div style="margin-top:8px; padding-top:8px; border-top:1px solid {_cd['borda']}; font-size:0.8rem; color:{_cd['texto_muted']}; display:flex; justify-content:space-between;">
+                        <span>🟣 Atuando: <b style="color:#8B5CF6;">{qtd_atuando}</b></span>
+                        <span>🟡 Pendente: <b style="color:#F59E0B;">{qtd_pendente}</b></span>
                     </div>
                 </div>
             """).strip()
@@ -924,20 +844,24 @@ with tab_dash:
         if lista_ativos:
             df_ativos = pd.DataFrame(lista_ativos).sort_values("Nº", ascending=False)
             
+            _ls = tema.linha_status()
+
             def colorir_linha_ativos(row):
                 saude_str = str(row.get("Saúde SLA", ""))
                 if "Estourado" in saude_str:
-                    return ['background-color: #7F1D1D; color: #FECDD3; font-weight: 700;'] * len(row)
-                
+                    fundo, texto = _ls["critico"]
+                    return [f'background-color: {fundo}; color: {texto}; font-weight: 700;'] * len(row)
+
                 m = re.search(r'(\d+)%', saude_str)
                 pct = int(m.group(1)) if m else 100
-                
+
                 if pct > 50:
-                    return ['background-color: #064E3B; color: #A7F3D0; font-weight: 700;'] * len(row)
+                    fundo, texto = _ls["ok"]
                 elif pct > 20:
-                    return ['background-color: #78350F; color: #FDE68A; font-weight: 700;'] * len(row)
+                    fundo, texto = _ls["atencao"]
                 else:
-                    return ['background-color: #7F1D1D; color: #FECDD3; font-weight: 700;'] * len(row)
+                    fundo, texto = _ls["critico"]
+                return [f'background-color: {fundo}; color: {texto}; font-weight: 700;'] * len(row)
 
             styled_ativos = df_ativos.style.apply(colorir_linha_ativos, axis=1)
             st.dataframe(styled_ativos, use_container_width=True, hide_index=True)
@@ -1002,14 +926,20 @@ with tab_dash:
             df_geral = pd.DataFrame(lista_geral).sort_values("Nº", ascending=False)
             if limite_exibicao != "Todos": df_geral = df_geral.head(int(limite_exibicao))
 
+            _lsg = tema.linha_status()
+
             def colorir_linha_geral(row):
                 st_val = str(row["Status"])
                 prio = str(row["Prioridade"]).strip().lower()
-                if "Concluído" in st_val: return ['background-color: #064E3B; color: #A7F3D0; font-weight: 700;'] * len(row)
+                if "Concluído" in st_val:
+                    fundo, texto = _lsg["ok"]
+                elif "alta" in prio:
+                    fundo, texto = _lsg["critico"]
+                elif "media" in prio:
+                    fundo, texto = _lsg["atencao"]
                 else:
-                    if "alta" in prio: return ['background-color: #7F1D1D; color: #FECDD3; font-weight: 700;'] * len(row)
-                    elif "media" in prio: return ['background-color: #78350F; color: #FDE68A; font-weight: 700;'] * len(row)
-                    else: return ['background-color: #1E3A8A; color: #F0F9FF; font-weight: 700;'] * len(row)
+                    fundo, texto = _lsg["neutro"]
+                return [f'background-color: {fundo}; color: {texto}; font-weight: 700;'] * len(row)
 
             styled_geral = df_geral.style.apply(colorir_linha_geral, axis=1)
             st.dataframe(styled_geral, use_container_width=True, hide_index=True)
