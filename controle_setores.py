@@ -50,6 +50,42 @@ DADOS_TECNICOS_INSUMOS = {
     "otb uv-xbt":      {"consumo_dia": 0.067,   "gramas_lote": 0.0, "unidade": "und", "obs": "2 und/mês"},
 }
 
+# ---------------------------------------------------------------------------
+# Preparo Químico (SL-501) - referência estática do processo, cuba a cuba.
+# ---------------------------------------------------------------------------
+PREPARO_QUIMICO_SL501 = [
+    {"Cuba": 1,  "Produto": "Soda 50%",           "Temperatura": "50°C", "Dosagem": "3,5L", "Frequência": "1x/semana"},
+    {"Cuba": 2,  "Produto": "Soda 5%",             "Temperatura": "50°C", "Dosagem": "700ml", "Frequência": "1x/semana"},
+    {"Cuba": 3,  "Produto": "Água",                "Temperatura": "—",    "Dosagem": "7L", "Frequência": "—"},
+    {"Cuba": 4,  "Produto": "Detergente ácido",    "Temperatura": "50°C", "Dosagem": "700ml", "Frequência": "1x/semana"},
+    {"Cuba": 5,  "Produto": "Água",                "Temperatura": "—",    "Dosagem": "7L", "Frequência": "—"},
+    {"Cuba": 6,  "Produto": "Água D.I.",           "Temperatura": "50°C", "Dosagem": "7L", "Frequência": "—"},
+    {"Cuba": 7,  "Produto": "Água D.I.",           "Temperatura": "50°C", "Dosagem": "7L", "Frequência": "—"},
+    {"Cuba": 8,  "Produto": "Forno (secagem)",     "Temperatura": "80°C", "Dosagem": "—", "Frequência": "—"},
+    {"Cuba": 9,  "Produto": "Espera (descanso)",   "Temperatura": "—",    "Dosagem": "—", "Frequência": "—"},
+    {"Cuba": 10, "Produto": "Prime",               "Temperatura": "15°C", "Dosagem": "4L", "Frequência": "—"},
+    {"Cuba": 11, "Produto": "Forno (secagem)",     "Temperatura": "80°C", "Dosagem": "—", "Frequência": "—"},
+    {"Cuba": 12, "Produto": "Espera (descanso)",   "Temperatura": "—",    "Dosagem": "—", "Frequência": "—"},
+    {"Cuba": 13, "Produto": "Verniz (espera)",     "Temperatura": "—",    "Dosagem": "descanso", "Frequência": "—"},
+    {"Cuba": 14, "Produto": "Verniz",              "Temperatura": "15°C", "Dosagem": "4L", "Frequência": "—"},
+    {"Cuba": 15, "Produto": "Forno (secagem)",     "Temperatura": "80°C", "Dosagem": "—", "Frequência": "—"},
+    {"Cuba": 16, "Produto": "Saída (retirada)",    "Temperatura": "—",    "Dosagem": "—", "Frequência": "—"},
+]
+
+FORMULA_DOSAGEM_SODA = {
+    "concentracao_atual": 50, "desejada": 20, "litragem_cuba": 30, "qtd_colocar": "12L",
+    "nota_1": "Recomendado manter Soda em 25% para destratar",
+    "misturas": [("Soda 50%", "2,5L soda"), ("Soda 5%", "500ml soda"), ("Detergente", "250ml detergente")],
+    "nota_2": "Colocar água D.I. antes",
+}
+
+# ---------------------------------------------------------------------------
+# Polimento (setor Surfaçagem) - polidoras, materiais e tipos de má-polimento.
+# ---------------------------------------------------------------------------
+POLIDORAS = ["Polidora 1", "Polidora 2", "Polidora 3"]
+MATERIAIS_POLIMENTO = ["Policarbonato", "Alto Índice", "CR-39", "1.56"]
+TIPOS_MA_POLIMENTO = ["Mau Polido", "Riscos", "Casca de Laranja", "Embaçamento", "Ondulação", "Outro"]
+
 ENTIDADES = {
     "INSUMOS": {
         "headers": ["setor", "nome", "estoque_atual", "unidade", "consumo_dia_calculado", "gramas_por_lote", "status", "observacao"],
@@ -110,6 +146,25 @@ ENTIDADES = {
     "HISTORICO_REPOSICAO": {
         "headers": ["setor", "insumo", "tipo_movimento", "data_hora", "quantidade", "unidade", "saldo_pos"],
         "seed": [],
+    },
+    "PREPARO_QUIMICO": {
+        "headers": ["setor", "nome", "estoque", "unidade", "observacao"],
+        "seed": [
+            ["Anti Reflexo", "Galão de soda 50%", 32.89, "L", ""],
+            ["Anti Reflexo", "Galão ácido", 20.0, "L", ""],
+        ],
+    },
+    "POLIMENTO_OCORRENCIAS": {
+        "headers": ["setor", "data_hora", "polidora", "material", "quantidade", "tipo_ma_polimento", "conferente"],
+        "seed": [],
+    },
+    "POLIMENTO_DISCOS": {
+        "headers": ["setor", "polidora", "data_ultima_troca", "proxima_troca"],
+        "seed": [
+            ["Surfaçagem", "Polidora 1", HOJE_STR, ""],
+            ["Surfaçagem", "Polidora 2", HOJE_STR, ""],
+            ["Surfaçagem", "Polidora 3", HOJE_STR, ""],
+        ],
     },
 }
 
@@ -242,6 +297,19 @@ def _badge_sla(cor_status, titulo, valor_grande, pct_barra, rodape=""):
             {rodape_html}
         </div>
     """).strip()
+
+def _linha_estoque_simples(entidade, campo_estoque, nome, valor_atual, unidade, chave, filtros):
+    """Linha 'nome (atual: X un) + campo + salvar' - o mesmo padrão simples já
+    usado em Consumíveis, reaproveitado aqui em vez de criar um componente novo."""
+    c_a, c_b, c_c = st.columns([2, 1, 1])
+    c_a.write(f"**{nome}** (Atual: `{valor_atual:g} {unidade}`)")
+    novo = c_b.number_input("Saldo", min_value=0.0, value=float(valor_atual), step=1.0,
+                             key=f"est_{chave}", label_visibility="collapsed")
+    if c_c.button("Salvar", key=f"btn_est_{chave}"):
+        _atualizar(entidade, filtros, {campo_estoque: novo})
+        st.success(f"{nome} salvo!")
+        st.cache_data.clear()
+        st.rerun()
 
 def _fmt_projecao(consumo_dia, dias, unidade):
     """Consumo projetado (consumo_dia x dias) convertido pra unidade de compra:
@@ -484,6 +552,48 @@ def _tela_insumos(setor):
             st.dataframe(pd.DataFrame(linhas_projecao), use_container_width=True, hide_index=True)
 
 # ---------------------------------------------------------------------------
+# TELA: PREPARO QUÍMICO (SL-501) - checklist do processo + estoque de galões
+# ---------------------------------------------------------------------------
+def _tela_preparo_quimico(setor):
+    st.info("🧪 Sequência de montagem da SL-501 — processo de referência, cuba a cuba.")
+
+    st.dataframe(pd.DataFrame(PREPARO_QUIMICO_SL501), use_container_width=True, hide_index=True)
+
+    st.markdown("---")
+    col_formula, col_estoque = st.columns(2)
+
+    with col_formula:
+        with st.container(border=True):
+            st.subheader("🧮 Fórmula de Dosagem (Soda)")
+            f = FORMULA_DOSAGEM_SODA
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Concentração atual", f"{f['concentracao_atual']}")
+            c2.metric("Soda desejada", f"{f['desejada']}")
+            c3.metric("Litragem da cuba", f"{f['litragem_cuba']}")
+            c4.metric("Colocar", f["qtd_colocar"])
+            st.caption(f"⚠️ {f['nota_1']}")
+            st.write("**Misturas de referência:**")
+            for nome_mistura, qtd in f["misturas"]:
+                st.write(f"- {nome_mistura} = {qtd}")
+            st.caption(f"💡 {f['nota_2']}")
+
+    with col_estoque:
+        with st.container(border=True):
+            st.subheader("🛢️ Estoque de Galões")
+            df_pq = _load("PREPARO_QUIMICO")
+            df_pq = df_pq[df_pq["setor"].astype(str).str.strip() == setor]
+            if df_pq.empty:
+                st.caption("Nenhum item cadastrado para este setor.")
+            for _, r in df_pq.iterrows():
+                nome_g = str(r["nome"]).strip()
+                un_g = str(r["unidade"]).strip() or "L"
+                val_g = _parse_num(r["estoque"])
+                _linha_estoque_simples(
+                    "PREPARO_QUIMICO", "estoque", nome_g, val_g, un_g,
+                    chave=f"pq_{nome_g}", filtros={"setor": setor, "nome": nome_g},
+                )
+
+# ---------------------------------------------------------------------------
 # TELA 2: CONTROLE DE PROCESSO (VERNIZ & PRIME)
 # ---------------------------------------------------------------------------
 def _tela_processo(setor):
@@ -624,14 +734,125 @@ def _tela_limpeza(setor):
                 for _, r in df_con.iterrows():
                     nome_c = str(r["nome"]).strip()
                     est_c = _parse_num(r["estoque"])
-                    c_a, c_b, c_c = st.columns([2, 1, 1])
-                    c_a.write(f"**{nome_c}** (Atual: `{est_c:g}`)")
-                    novo_est = c_b.number_input("Saldo", min_value=0.0, value=float(est_c), step=1.0, key=f"con_{nome_c}", label_visibility="collapsed")
-                    if c_c.button("Salvar", key=f"bcon_{nome_c}"):
-                        _atualizar("CONSUMIVEIS", {"setor": setor, "nome": nome_c}, {"estoque": novo_est})
-                        st.success(f"{nome_c} salvo!")
-                        st.cache_data.clear()
-                        st.rerun()
+                    _linha_estoque_simples(
+                        "CONSUMIVEIS", "estoque", nome_c, est_c, "und",
+                        chave=f"con_{nome_c}", filtros={"setor": setor, "nome": nome_c},
+                    )
+
+# ---------------------------------------------------------------------------
+# TELA: POLIMENTO (setor Surfaçagem) - 3 polidoras, registro por lote/toque
+# ---------------------------------------------------------------------------
+def _registrar_ocorrencia_polimento(setor, polidora, material, qtd, tipo, conferente):
+    qtd_fmt = int(qtd) if float(qtd).is_integer() else qtd
+    _append("POLIMENTO_OCORRENCIAS", [
+        setor, datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S"), polidora,
+        material, qtd_fmt, tipo, (conferente or "").strip() or "—",
+    ])
+    st.success(f"Registrado: {polidora} · {material} · {tipo} · qtd {qtd_fmt}")
+    st.cache_data.clear()
+    st.rerun()
+
+def _card_polidora(setor, polidora, df_oc, df_discos):
+    with st.container(border=True):
+        st.subheader(polidora)
+
+        sub = df_oc[df_oc["polidora"] == polidora]
+        total = sub["quantidade_num"].sum() if not sub.empty else 0.0
+        pior_material = sub.groupby("material")["quantidade_num"].sum().idxmax() if not sub.empty else "—"
+
+        c1, c2 = st.columns(2)
+        c1.metric("Lentes c/ polimento ruim", f"{total:g}")
+        c2.metric("Material mais problemático", pior_material)
+
+        material = st.selectbox("Material", MATERIAIS_POLIMENTO, key=f"pol_mat_{polidora}")
+        tipo = st.selectbox("Tipo de má-polimento", TIPOS_MA_POLIMENTO, key=f"pol_tipo_{polidora}")
+        conferente = st.text_input("Conferente", key=f"pol_conf_{polidora}", placeholder="Quem conferiu")
+
+        c_a, c_b, c_c = st.columns([1, 2, 1])
+        with c_a:
+            if st.button("👆 +1", key=f"pol_mais1_{polidora}", use_container_width=True,
+                         help="Registro de 1 toque: quantidade 1"):
+                _registrar_ocorrencia_polimento(setor, polidora, material, 1, tipo, conferente)
+        with c_b:
+            qtd_txt = st.text_input(
+                "Qtd do lote", key=f"pol_qtd_{polidora}", label_visibility="collapsed",
+                placeholder="Qtd do lote + Enter/Registrar",
+            )
+        with c_c:
+            if st.button("Registrar", key=f"pol_reg_{polidora}", use_container_width=True):
+                qtd = _parse_num(qtd_txt, padrao=None)
+                if qtd is None or qtd <= 0:
+                    st.error("Informe uma quantidade válida (ex: 5).")
+                else:
+                    _registrar_ocorrencia_polimento(setor, polidora, material, qtd, tipo, conferente)
+
+        st.markdown("---")
+        linha_disco = df_discos[df_discos["polidora"] == polidora]
+        dt_ultima = str(linha_disco.iloc[0]["data_ultima_troca"]).strip() if not linha_disco.empty else ""
+        prox = _proxima_data(dt_ultima, "mensal", "")
+        st.caption(f"🪩 Disco de polimento — última troca: `{dt_ultima or '—'}` · próxima: `{prox.strftime('%d/%m/%Y')}`")
+        if st.button("✅ Confirmar troca feita hoje", key=f"pol_disco_{polidora}", use_container_width=True):
+            nova_prox = _proxima_data(HOJE_STR, "mensal", "").strftime("%d/%m/%Y")
+            _atualizar("POLIMENTO_DISCOS", {"setor": setor, "polidora": polidora},
+                       {"data_ultima_troca": HOJE_STR, "proxima_troca": nova_prox})
+            st.success(f"Troca de disco da {polidora} registrada hoje!")
+            st.cache_data.clear()
+            st.rerun()
+
+def _tela_polimento(setor):
+    st.info("💎 **Controle de Polimento** — registre por lote (digite a quantidade) ou por toque (+1). Sem status de aberto/resolvido: é um log histórico.")
+
+    df_oc = _load("POLIMENTO_OCORRENCIAS")
+    df_oc = df_oc[df_oc["setor"].astype(str).str.strip() == setor].copy()
+    if not df_oc.empty:
+        df_oc["quantidade_num"] = df_oc["quantidade"].apply(lambda v: _parse_num(v, 1.0))
+
+    df_discos = _load("POLIMENTO_DISCOS")
+    df_discos = df_discos[df_discos["setor"].astype(str).str.strip() == setor]
+
+    cols = st.columns(3)
+    for col, polidora in zip(cols, POLIDORAS):
+        with col:
+            _card_polidora(setor, polidora, df_oc, df_discos)
+
+    st.markdown("---")
+    st.subheader("📊 Indicadores")
+    g1, g2 = st.columns(2)
+    with g1:
+        st.write("**Lentes Reprovadas por Polidora**")
+        if not df_oc.empty:
+            st.bar_chart(df_oc.groupby("polidora")["quantidade_num"].sum())
+        else:
+            st.caption("Sem registros ainda.")
+    with g2:
+        st.write("**Ranking de Perda/Rejeição por Material**")
+        if not df_oc.empty:
+            st.bar_chart(df_oc.groupby("material")["quantidade_num"].sum().sort_values(ascending=False))
+        else:
+            st.caption("Sem registros ainda.")
+
+    st.markdown("---")
+    st.subheader("📋 Log de Ocorrências")
+    if not df_oc.empty:
+        st.dataframe(df_oc.iloc[::-1].drop(columns=["quantidade_num"]), use_container_width=True, hide_index=True)
+    else:
+        st.caption("Nenhuma ocorrência registrada ainda.")
+
+# ---------------------------------------------------------------------------
+# Registro de sub-abas por setor - cada setor tem seu próprio conjunto, em
+# vez de assumir que todo setor usa Insumos/Processo/Limpeza.
+# ---------------------------------------------------------------------------
+SETORES_ABAS = {
+    "Anti Reflexo": [
+        ("📦 Estoque de Insumos & Lotes", _tela_insumos),
+        ("🧪 Controle de Processo (Verniz & Prime)", _tela_processo),
+        ("🧹 Limpeza, Filtros & Consumíveis", _tela_limpeza),
+        ("🧫 Preparo Químico", _tela_preparo_quimico),
+    ],
+    "Surfaçagem": [
+        ("💎 Polimento", _tela_polimento),
+    ],
+}
 
 def render():
     try:
@@ -643,16 +864,18 @@ def render():
     with col_t1:
         st.title("🏭 Controle de Setores")
     with col_t2:
-        setor_selecionado = st.selectbox("Setor Operacional:", ["Anti Reflexo", "Surfaçagem", "Montagem", "Coloração"], index=0, key="cs_setor_topo")
+        setor_selecionado = st.selectbox(
+            "Setor Operacional:", list(SETORES_ABAS.keys()), index=0, key="cs_setor_topo",
+        )
 
     st.markdown("---")
 
-    tab1, tab2, tab3 = st.tabs([
-        "📦 Estoque de Insumos & Lotes",
-        "🧪 Controle de Processo (Verniz & Prime)",
-        "🧹 Limpeza, Filtros & Consumíveis"
-    ])
+    abas_do_setor = SETORES_ABAS.get(setor_selecionado, [])
+    if not abas_do_setor:
+        st.info(f"Nenhuma sub-aba configurada ainda para o setor **{setor_selecionado}**.")
+        return
 
-    with tab1: _tela_insumos(setor_selecionado)
-    with tab2: _tela_processo(setor_selecionado)
-    with tab3: _tela_limpeza(setor_selecionado)
+    tabs = st.tabs([titulo for titulo, _ in abas_do_setor])
+    for tab, (_, funcao_tela) in zip(tabs, abas_do_setor):
+        with tab:
+            funcao_tela(setor_selecionado)
