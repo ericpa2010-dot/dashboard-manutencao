@@ -1070,12 +1070,12 @@ def _card_polidora(setor, polidora, df_oc, df_discos):
         linha_disco = df_discos[df_discos["polidora"] == polidora]
         dt_ultima = str(linha_disco.iloc[0]["data_ultima_troca"]).strip() if not linha_disco.empty else ""
         prox = _proxima_data(dt_ultima, "mensal", "")
-        st.caption(f"🪩 Disco de polimento — última troca: `{dt_ultima or '—'}` · próxima: `{prox.strftime('%d/%m/%Y')}`")
-        if st.button("✅ Confirmar troca feita hoje", key=f"pol_disco_{polidora}", use_container_width=True):
+        st.caption(f"Galão — última troca: `{dt_ultima or '—'}` · próxima: `{prox.strftime('%d/%m/%Y')}`")
+        if st.button("Confirmar troca do galão hoje", key=f"pol_disco_{polidora}", use_container_width=True):
             nova_prox = _proxima_data(HOJE_STR, "mensal", "").strftime("%d/%m/%Y")
             _atualizar("POLIMENTO_DISCOS", {"setor": setor, "polidora": polidora},
                        {"data_ultima_troca": HOJE_STR, "proxima_troca": nova_prox})
-            st.success(f"Troca de disco da {polidora} registrada hoje!")
+            st.success(f"Troca do galão da {polidora} registrada hoje!")
             st.cache_data.clear()
             st.rerun()
 
