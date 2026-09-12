@@ -15,6 +15,7 @@ import gspread
 from gspread.utils import rowcol_to_a1
 from gspread.exceptions import WorksheetNotFound
 from google.oauth2.service_account import Credentials
+import tema
 
 FUSO_BR = pytz.timezone("America/Sao_Paulo")
 SETOR_PADRAO = "Anti Reflexo"
@@ -35,7 +36,7 @@ HOJE_STR = datetime.now(FUSO_BR).strftime("%d/%m/%Y")
 
 # Mesma paleta de cores do card de SLA (Dashboard & SLA / cartao_prioridade_jornada
 # em app_manutencao.py) - reaproveitada aqui pra manter a mesma linguagem visual.
-_CORES_SLA = {"red": "#EF4444", "orange": "#F59E0B", "green": "#22C55E", "gray": "#64748B"}
+_CORES_SLA = {"red": "#EF4444", "orange": "#F59E0B", "green": "#10B981", "gray": "#64748B"}
 
 DADOS_TECNICOS_INSUMOS = {
     # Consumo/dia medido na prática (áudio + medição direta do operador),
@@ -380,15 +381,18 @@ def _bump_inp_versao(nome):
 
 def _badge_sla(cor_status, titulo, valor_grande, pct_barra, rodape=""):
     """Badge + barra coloridos, mesmo padrao (textwrap.dedent().strip()) usado
-    no card de prioridade do Dashboard & SLA - já comprovado sem vazar HTML."""
+    no card de prioridade do Dashboard & SLA - já comprovado sem vazar HTML.
+    Fundo/borda puxam do tema compartilhado (claro/escuro); a cor de status
+    (verde/laranja/vermelho/cinza) é semântica e fixa nos dois temas."""
+    c = tema.cores()
     cor_hex = _CORES_SLA.get(cor_status, _CORES_SLA["gray"])
     pct_barra = max(0.0, min(100.0, pct_barra))
-    rodape_html = f'<div style="font-size:0.8rem; color:#CBD5E1; margin-top:4px;">{rodape}</div>' if rodape else ""
+    rodape_html = f'<div style="font-size:0.8rem; color:{c["texto_muted"]}; margin-top:4px;">{rodape}</div>' if rodape else ""
     return textwrap.dedent(f"""
-        <div style="background-color:#1E293B; border:2px solid {cor_hex}; padding:12px 15px; border-radius:12px; margin-top:6px;">
+        <div style="background-color:{c['superficie']}; border:2px solid {cor_hex}; padding:12px 15px; border-radius:12px; margin-top:6px;">
             <div style="font-weight:800; color:{cor_hex}; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.03em;">{titulo}</div>
             <div style="font-size:1.25rem; font-weight:800; color:{cor_hex}; margin:4px 0;">{valor_grande}</div>
-            <div style="background-color:#334155; border-radius:6px; height:12px; width:100%; margin:8px 0; overflow:hidden;">
+            <div style="background-color:{c['borda']}; border-radius:6px; height:12px; width:100%; margin:8px 0; overflow:hidden;">
                 <div style="background-color:{cor_hex}; width:{pct_barra:.1f}%; height:100%; border-radius:6px; transition: width 0.5s ease;"></div>
             </div>
             {rodape_html}
@@ -1003,8 +1007,9 @@ def _card_polidora(setor, polidora, df_oc, df_discos):
 
     # Borda/badge colorida pelo volume de rejeito da polidora - mesma
     # linguagem visual do resto do app (verde/laranja/vermelho).
+    c = tema.cores()
     if total <= 0:
-        cor_card = "#22C55E"
+        cor_card = "#10B981"
     elif total <= 5:
         cor_card = "#F59E0B"
     else:
@@ -1014,7 +1019,7 @@ def _card_polidora(setor, polidora, df_oc, df_discos):
         st.markdown(
             f'<div style="border-left:6px solid {cor_card}; padding-left:10px; margin-bottom:8px; '
             f'display:flex; justify-content:space-between; align-items:center;">'
-            f'<span style="font-size:1.15rem; font-weight:800; color:#F8FAFC;">{polidora}</span>'
+            f'<span style="font-size:1.15rem; font-weight:800; color:{c["texto"]};">{polidora}</span>'
             f'<span style="background:{cor_card}22; color:{cor_card}; padding:3px 12px; '
             f'border-radius:9999px; font-size:0.75rem; font-weight:800;">{total:g} lentes ativas</span>'
             f'</div>',
@@ -1030,7 +1035,7 @@ def _card_polidora(setor, polidora, df_oc, df_discos):
 
         st.markdown("**Apontar material rejeitado:**")
         for material in MATERIAIS_POLIMENTO:
-            cor_mat = _CORES_MATERIAL.get(material, "#94A3B8")
+            cor_mat = _CORES_MATERIAL.get(material, c["texto_muted"])
             total_mat = sub[sub["material"] == material]["quantidade_num"].sum() if not sub.empty else 0.0
 
             c_info, c_mais1, c_qtd, c_ok = st.columns([2.3, 0.8, 1.4, 0.7])
@@ -1038,9 +1043,9 @@ def _card_polidora(setor, polidora, df_oc, df_discos):
                 st.markdown(
                     f'<div style="display:flex; align-items:center; gap:6px; margin-top:6px;">'
                     f'<span style="width:10px; height:10px; border-radius:50%; background:{cor_mat}; flex-shrink:0;"></span>'
-                    f'<span style="font-weight:700; color:#F8FAFC; font-size:0.9rem;">{material}</span>'
+                    f'<span style="font-weight:700; color:{c["texto"]}; font-size:0.9rem;">{material}</span>'
                     f'</div>'
-                    f'<div style="font-size:0.72rem; color:#94A3B8; margin-left:16px;">Total: {total_mat:g} un</div>',
+                    f'<div style="font-size:0.72rem; color:{c["texto_muted"]}; margin-left:16px;">Total: {total_mat:g} un</div>',
                     unsafe_allow_html=True,
                 )
             with c_mais1:
