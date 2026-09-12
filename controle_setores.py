@@ -92,6 +92,12 @@ POLIDORAS = ["Polidora 1", "Polidora 2", "Polidora 3"]
 MATERIAIS_POLIMENTO = ["Policarbonato", "Alto Índice", "CR-39", "1.56"]
 TIPOS_MA_POLIMENTO = ["Mau Polido", "Riscos", "Casca de Laranja", "Embaçamento", "Ondulação", "Outro"]
 
+# Cor do "ponto" de cada material no card de polimento (estilo do painel de
+# referência - ponto colorido + nome + contador por material).
+_CORES_MATERIAL = {
+    "Policarbonato": "#38BDF8", "Alto Índice": "#E5E7EB", "CR-39": "#22C55E", "1.56": "#FBBF24",
+}
+
 ENTIDADES = {
     "INSUMOS": {
         "headers": ["setor", "nome", "estoque_atual", "unidade", "consumo_dia_calculado", "gramas_por_lote", "status", "observacao"],
@@ -991,38 +997,69 @@ def _registrar_ocorrencia_polimento(setor, polidora, material, qtd, tipo, confer
     st.rerun()
 
 def _card_polidora(setor, polidora, df_oc, df_discos):
-    with st.container(border=True):
-        st.subheader(polidora)
+    sub = df_oc[df_oc["polidora"] == polidora]
+    total = sub["quantidade_num"].sum() if not sub.empty else 0.0
+    pior_material = sub.groupby("material")["quantidade_num"].sum().idxmax() if not sub.empty else "—"
 
-        sub = df_oc[df_oc["polidora"] == polidora]
-        total = sub["quantidade_num"].sum() if not sub.empty else 0.0
-        pior_material = sub.groupby("material")["quantidade_num"].sum().idxmax() if not sub.empty else "—"
+    # Borda/badge colorida pelo volume de rejeito da polidora - mesma
+    # linguagem visual do resto do app (verde/laranja/vermelho).
+    if total <= 0:
+        cor_card = "#22C55E"
+    elif total <= 5:
+        cor_card = "#F59E0B"
+    else:
+        cor_card = "#EF4444"
+
+    with st.container(border=True):
+        st.markdown(
+            f'<div style="border-left:6px solid {cor_card}; padding-left:10px; margin-bottom:8px; '
+            f'display:flex; justify-content:space-between; align-items:center;">'
+            f'<span style="font-size:1.15rem; font-weight:800; color:#F8FAFC;">{polidora}</span>'
+            f'<span style="background:{cor_card}22; color:{cor_card}; padding:3px 12px; '
+            f'border-radius:9999px; font-size:0.75rem; font-weight:800;">{total:g} lentes ativas</span>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
 
         c1, c2 = st.columns(2)
         c1.metric("Lentes c/ polimento ruim", f"{total:g}")
         c2.metric("Material mais problemático", pior_material)
 
-        material = st.selectbox("Material", MATERIAIS_POLIMENTO, key=f"pol_mat_{polidora}")
         tipo = st.selectbox("Tipo de má-polimento", TIPOS_MA_POLIMENTO, key=f"pol_tipo_{polidora}")
         conferente = st.text_input("Conferente", key=f"pol_conf_{polidora}", placeholder="Quem conferiu")
 
-        c_a, c_b, c_c = st.columns([1, 2, 1])
-        with c_a:
-            if st.button("👆 +1", key=f"pol_mais1_{polidora}", use_container_width=True,
-                         help="Registro de 1 toque: quantidade 1"):
-                _registrar_ocorrencia_polimento(setor, polidora, material, 1, tipo, conferente)
-        with c_b:
-            qtd_txt = st.text_input(
-                "Qtd do lote", key=f"pol_qtd_{polidora}", label_visibility="collapsed",
-                placeholder="Qtd do lote + Enter/Registrar",
-            )
-        with c_c:
-            if st.button("Registrar", key=f"pol_reg_{polidora}", use_container_width=True):
-                qtd = _parse_num(qtd_txt, padrao=None)
-                if qtd is None or qtd <= 0:
-                    st.error("Informe uma quantidade válida (ex: 5).")
-                else:
-                    _registrar_ocorrencia_polimento(setor, polidora, material, qtd, tipo, conferente)
+        st.markdown("**Apontar material rejeitado:**")
+        for material in MATERIAIS_POLIMENTO:
+            cor_mat = _CORES_MATERIAL.get(material, "#94A3B8")
+            total_mat = sub[sub["material"] == material]["quantidade_num"].sum() if not sub.empty else 0.0
+
+            c_info, c_mais1, c_qtd, c_ok = st.columns([2.3, 0.8, 1.4, 0.7])
+            with c_info:
+                st.markdown(
+                    f'<div style="display:flex; align-items:center; gap:6px; margin-top:6px;">'
+                    f'<span style="width:10px; height:10px; border-radius:50%; background:{cor_mat}; flex-shrink:0;"></span>'
+                    f'<span style="font-weight:700; color:#F8FAFC; font-size:0.9rem;">{material}</span>'
+                    f'</div>'
+                    f'<div style="font-size:0.72rem; color:#94A3B8; margin-left:16px;">Total: {total_mat:g} un</div>',
+                    unsafe_allow_html=True,
+                )
+            with c_mais1:
+                if st.button("+1", key=f"pol_mat1_{polidora}_{material}", use_container_width=True,
+                             help=f"Registro de 1 toque para {material}"):
+                    _registrar_ocorrencia_polimento(setor, polidora, material, 1, tipo, conferente)
+            with c_qtd:
+                qtd_txt = st.text_input(
+                    f"Qtd lote {material}", key=f"pol_qtdmat_{polidora}_{material}",
+                    label_visibility="collapsed", placeholder="Qtd lote (ex: 7)",
+                )
+            with c_ok:
+                if st.button("↵", key=f"pol_regmat_{polidora}_{material}", use_container_width=True,
+                             help="Registrar quantidade do lote"):
+                    qtd = _parse_num(qtd_txt, padrao=None)
+                    if qtd is None or qtd <= 0:
+                        st.error(f"Quantidade inválida para {material}.")
+                    else:
+                        _registrar_ocorrencia_polimento(setor, polidora, material, qtd, tipo, conferente)
 
         st.markdown("---")
         linha_disco = df_discos[df_discos["polidora"] == polidora]
