@@ -90,6 +90,20 @@ def botao_alternar_tema():
         st.rerun()
 
 
+# Seletores de botão redundantes (classe antiga .stButton + data-testid
+# novo stBaseButton) - Streamlit muda esses nomes internos entre versões,
+# então cobrimos os dois em vez de apostar em só um.
+_SEL_BOTAO = (
+    'div.stButton > button, div.stFormSubmitButton > button, '
+    'div[data-testid="stButton"] button, div[data-testid="stFormSubmitButton"] button, '
+    'button[data-testid^="stBaseButton-primary"], button[data-testid^="stBaseButton-secondaryFormSubmit"]'
+)
+_SEL_BOTAO_SECUNDARIO = (
+    'div.stButton > button[kind="secondary"], '
+    'button[data-testid^="stBaseButton-secondary"]:not([data-testid^="stBaseButton-secondaryFormSubmit"])'
+)
+
+
 def css_global():
     """CSS injetado 1x no topo do app, reagindo ao tema ativo. Cobre os
     componentes nativos do Streamlit (botões, inputs, métricas, abas,
@@ -107,10 +121,27 @@ def css_global():
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }}
 
-    h1, h2, h3, h4, h5, h6, label, p, span, .stMarkdown {{
-        color: {c['texto']};
+    h1, h2, h3, h4, h5, h6, label, p, span, li, .stMarkdown,
+    [data-testid="stMarkdownContainer"] p,
+    [data-testid="stMarkdownContainer"] li,
+    [data-testid="stMarkdownContainer"] span,
+    [data-testid="stWidgetLabel"] p,
+    [data-testid="stWidgetLabel"] label,
+    [data-testid="stSelectbox"] div,
+    [data-testid="stSelectbox"] span,
+    [data-testid="stMetricDelta"] {{
+        color: {c['texto']} !important;
     }}
     h1, h2, h3, h4, h5, h6 {{ font-weight: 700 !important; }}
+
+    /* Legendas e textos secundários - testid mudou entre versões do
+    Streamlit, cobrindo os dois pra não depender de qual está rodando. */
+    [data-testid="stCaptionContainer"],
+    [data-testid="stCaptionContainer"] p,
+    [data-testid="stCaption"],
+    .stCaption {{
+        color: {c['texto_muted']} !important;
+    }}
 
     div[data-baseweb="tab-list"] {{
         gap: 8px;
@@ -164,23 +195,44 @@ def css_global():
         border-radius: 8px !important;
     }}
 
-    div.stButton > button, div.stFormSubmitButton > button {{
+    /* Botões - seletores redundantes (classe antiga + data-testid novo)
+    porque o DOM interno do Streamlit muda de nome entre versões; sem
+    isso a regra simplesmente não pega e o botão fica com o tema nativo
+    do navegador/SO, que pode ficar ilegível em cima do nosso fundo.
+    O "*" dentro do botão força o texto interno (o Streamlit às vezes
+    envolve o rótulo num <p>/<div> com cor própria que ganha do pai). */
+    {_SEL_BOTAO} {{
         background-color: {c['primaria']} !important;
-        color: #FFFFFF !important;
         font-weight: 600 !important;
         border-radius: 8px !important;
         padding: 10px 18px !important;
         border: none !important;
+        opacity: 1 !important;
         transition: all 0.15s ease;
     }}
-    div.stButton > button:hover, div.stFormSubmitButton > button:hover {{
+    {_SEL_BOTAO}, {_SEL_BOTAO} * {{
+        color: #FFFFFF !important;
+    }}
+    {_SEL_BOTAO}:hover {{
         background-color: {c['primaria_hover']} !important;
         transform: translateY(-1px);
     }}
-    div.stButton > button[kind="secondary"] {{
-        background-color: {c['superficie']} !important;
-        color: {c['texto']} !important;
+    {_SEL_BOTAO_SECUNDARIO} {{
+        background-color: {c['superficie_alt']} !important;
         border: 1px solid {c['borda']} !important;
+    }}
+    {_SEL_BOTAO_SECUNDARIO}, {_SEL_BOTAO_SECUNDARIO} * {{
+        color: {c['texto']} !important;
+    }}
+    {_SEL_BOTAO}:disabled,
+    {_SEL_BOTAO_SECUNDARIO}:disabled {{
+        background-color: {c['superficie_alt']} !important;
+        border: 1px solid {c['borda']} !important;
+        opacity: 0.6 !important;
+    }}
+    {_SEL_BOTAO}:disabled *,
+    {_SEL_BOTAO_SECUNDARIO}:disabled * {{
+        color: {c['texto_muted']} !important;
     }}
 
     hr {{
