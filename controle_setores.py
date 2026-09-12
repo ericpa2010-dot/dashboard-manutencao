@@ -27,6 +27,10 @@ COBERTURA_AMARELA  = 120  # 60 a 120 dias -> Ponto de Compra
 # se o ritmo real de produção for diferente.
 DIAS_UTEIS_POR_MES = 22
 
+# Água D.I.: limite MÁXIMO rígido (não é faixa ideal) - acima disso, a
+# máquina tem problema. Confirmado com o operador: 0,05 µS.
+AGUA_DI_LIMITE_US = 0.05
+
 HOJE_STR = datetime.now(FUSO_BR).strftime("%d/%m/%Y")
 
 # Mesma paleta de cores do card de SLA (Dashboard & SLA / cartao_prioridade_jornada
@@ -119,7 +123,9 @@ ENTIDADES = {
         ],
     },
     "MEDICOES_PROCESSO": {
-        "headers": ["data_hora", "setor", "produto", "massa_cadinho_g", "massa_amostra_g", "massa_seco_g", "teor_solidos_pct", "temperatura_c", "espessura_um", "status_conformidade", "acao_completado"],
+        "headers": ["data_hora", "setor", "produto", "massa_cadinho_g", "massa_amostra_g", "massa_seco_g",
+                    "teor_solidos_pct", "temperatura_c", "espessura_um", "agua_di_us",
+                    "status_conformidade", "acao_completado"],
         "seed": [],
     },
     "ROTINA_LIMPEZA": {
@@ -767,10 +773,48 @@ def _tela_preparo_quimico(setor):
 # ---------------------------------------------------------------------------
 # TELA 2: CONTROLE DE PROCESSO (VERNIZ & PRIME)
 # ---------------------------------------------------------------------------
+def _pontos_atencao_processo(setor):
+    """Olha a medição mais recente de cada produto (Verniz/Prime/Água D.I.)
+    e lista quem está fora da faixa AGORA - não depende de estar no momento
+    de salvar uma medição pra aparecer."""
+    df_med = _load("MEDICOES_PROCESSO")
+    if df_med.empty or "setor" not in df_med.columns:
+        return []
+    df_med = df_med[df_med["setor"].astype(str).str.strip() == setor]
+
+    pontos = []
+    for produto in ["Verniz", "Prime", "Água D.I."]:
+        sub = df_med[df_med["produto"].astype(str).str.strip() == produto]
+        if sub.empty:
+            continue
+        ultima = sub.iloc[-1]
+        status = str(ultima.get("status_conformidade", ""))
+        if "Fora" not in status and "🔴" not in status:
+            continue
+        if produto == "Água D.I.":
+            valor = _parse_num(ultima.get("agua_di_us"))
+            pontos.append(f"💧 **Água D.I.**: {valor:g} µS (limite máximo {AGUA_DI_LIMITE_US:g} µS)")
+        else:
+            teor = ultima.get("teor_solidos_pct", "?")
+            temp = ultima.get("temperatura_c", "?")
+            esp = ultima.get("espessura_um", "?")
+            pontos.append(f"🧪 **{produto}**: teor {teor}% · {temp}°C · espessura {esp}µm")
+    return pontos
+
 def _tela_processo(setor):
+    with st.container(border=True):
+        pontos = _pontos_atencao_processo(setor)
+        if pontos:
+            st.markdown("### 🚨 Pontos de Atenção (última medição de cada parâmetro)")
+            for p in pontos:
+                st.error(p)
+        else:
+            st.markdown("### ✅ Pontos de Atenção")
+            st.success("Nenhum parâmetro fora da faixa na última medição registrada.")
+
     st.info("🧪 **Controle de Processo Analítico** — Cálculo do Teor de Sólidos Secos (%) pela fórmula da balança: `Teor = [(I - G) / (H - G)] × 100`")
 
-    col_verniz, col_prime = st.columns(2)
+    col_verniz, col_prime, col_agua = st.columns(3)
 
     with col_verniz:
         with st.container(border=True):
@@ -803,7 +847,7 @@ def _tela_processo(setor):
                     st_ok = "🟢 Conforme" if (33.0 <= v_teor <= 38.0 and 10.0 <= v_temp <= 15.0 and 2.5 <= v_esp <= 3.5) else "🔴 Fora da Faixa"
                     _append("MEDICOES_PROCESSO", [
                         datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S"),
-                        setor, "Verniz", v_g, v_h, v_i, f"{v_teor:.2f}", v_temp, v_esp, st_ok, v_acao
+                        setor, "Verniz", v_g, v_h, v_i, f"{v_teor:.2f}", v_temp, v_esp, "", st_ok, v_acao
                     ])
                     st.success(f"✅ Medição do Verniz salva ({v_teor:.2f}%)!")
                     st.cache_data.clear()
@@ -840,9 +884,32 @@ def _tela_processo(setor):
                     st_ok = "🟢 Conforme" if (5.5 <= p_teor <= 7.5 and 20.0 <= p_temp <= 25.0 and 0.5 <= p_esp <= 1.0) else "🔴 Fora da Faixa"
                     _append("MEDICOES_PROCESSO", [
                         datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S"),
-                        setor, "Prime", p_g, p_h, p_i, f"{p_teor:.2f}", p_temp, p_esp, st_ok, p_acao
+                        setor, "Prime", p_g, p_h, p_i, f"{p_teor:.2f}", p_temp, p_esp, "", st_ok, p_acao
                     ])
                     st.success(f"✅ Medição do Prime salva ({p_teor:.2f}%)!")
+                    st.cache_data.clear()
+                    st.rerun()
+
+    with col_agua:
+        with st.container(border=True):
+            st.subheader("💧 ÁGUA D.I.")
+            st.caption(f"Limite MÁXIMO: **{AGUA_DI_LIMITE_US:g} µS** — rígido, não é faixa ideal. Acima disso indica problema na máquina.")
+
+            with st.form("form_agua_di"):
+                a_valor = st.number_input("Valor medido (µS)", value=0.03, min_value=0.0, step=0.01, format="%.3f", key="a_valor")
+                fora = a_valor > AGUA_DI_LIMITE_US
+                st.metric("Leitura", f"{a_valor:.3f} µS", "🔴 Acima do limite" if fora else "🟢 Dentro do limite")
+
+                a_acao = st.text_input(
+                    "Ação:", value=("Verificar máquina — acima do limite" if fora else "Dentro do limite"), key="a_acao",
+                )
+                if st.form_submit_button("💾 Salvar Medição Água D.I.", use_container_width=True):
+                    status_agua = "🔴 Fora da Faixa" if fora else "🟢 Conforme"
+                    _append("MEDICOES_PROCESSO", [
+                        datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S"),
+                        setor, "Água D.I.", "", "", "", "", "", "", f"{a_valor:.3f}", status_agua, a_acao,
+                    ])
+                    st.success(f"✅ Medição de Água D.I. salva ({a_valor:.3f} µS)!")
                     st.cache_data.clear()
                     st.rerun()
 
