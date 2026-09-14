@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 import pytz
 import streamlit as st
+import plotly.graph_objects as go
 import gspread
 from gspread.utils import rowcol_to_a1
 from gspread.exceptions import WorksheetNotFound
@@ -420,6 +421,32 @@ def _fmt_projecao(consumo_dia, dias, unidade):
     if unidade == "kg":
         return f"{qtd} pacote(s) de 1kg"
     return f"{qtd} {unidade}"
+
+def _grafico_barra(serie, titulo, cores_barras=None):
+    """Barra simples com o valor escrito em cima de cada barra, no mesmo
+    tema (cor/fundo) do resto do site - troca o st.bar_chart nativo (sem
+    rótulo de valor) por algo mais claro pro pessoal ler de longe."""
+    c = tema.cores()
+    if serie.empty:
+        return None
+    if cores_barras is None:
+        cor_barra = c["primaria"]
+    else:
+        cor_barra = [cores_barras.get(x, c["primaria"]) for x in serie.index]
+    fig = go.Figure(go.Bar(
+        x=serie.index, y=serie.values, marker_color=cor_barra,
+        text=serie.values, texttemplate="%{text:.0f}", textposition="outside",
+        textfont=dict(color=c["texto"], size=13),
+    ))
+    fig.update_layout(
+        template=tema.plotly_template(),
+        title=dict(text=f"<b>{titulo}</b>", font=dict(size=14, color=c["texto"])),
+        xaxis=dict(tickfont=dict(color=c["texto_muted"], size=11), showgrid=False),
+        yaxis=dict(tickfont=dict(color=c["texto_muted"]), gridcolor=c["borda"], showgrid=True),
+        paper_bgcolor=c["superficie"], plot_bgcolor=c["superficie"],
+        margin=dict(l=10, r=10, t=40, b=10), height=300, showlegend=False,
+    )
+    return fig
 
 # ---------------------------------------------------------------------------
 # TELA 1: ESTOQUE DE INSUMOS (100% NATIVO, DIRETO E SEM QUEBRAS)
@@ -991,14 +1018,33 @@ def _tela_limpeza(setor):
 # TELA: POLIMENTO (setor Surfaçagem) - 3 polidoras, registro por lote/toque
 # ---------------------------------------------------------------------------
 def _registrar_ocorrencia_polimento(setor, polidora, material, qtd, tipo, conferente):
+    """Grava a ocorrência e avisa por toast (flutuante, não empurra o layout)
+    - SEM st.rerun()/limpar cache do app inteiro. Um clique de registro não
+    pode recarregar o app inteiro (Chamados, Dashboard, todos os setores);
+    só invalida o cache de dados do Controle Setores, e o próprio ciclo de
+    rerun que o Streamlit já faz depois de qualquer clique/Enter mostra o
+    dado fresco no próximo toque - sem tela piscando nem trocar de aba."""
     qtd_fmt = int(qtd) if float(qtd).is_integer() else qtd
     _append("POLIMENTO_OCORRENCIAS", [
         setor, datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S"), polidora,
         material, qtd_fmt, tipo, (conferente or "").strip() or "—",
     ])
-    st.success(f"Registrado: {polidora} · {material} · {tipo} · qtd {qtd_fmt}")
-    st.cache_data.clear()
-    st.rerun()
+    _load.clear()
+    st.toast(f"✅ {polidora} · {material} · qtd {qtd_fmt}")
+
+def _on_lote_submit(setor, polidora, material, qtd_key, tipo_key, conf_key):
+    """Callback do campo 'Qtd lote' - dispara ao apertar Enter (ou sair do
+    campo), sem precisar de um botão separado de confirmar."""
+    qtd_txt = st.session_state.get(qtd_key, "")
+    st.session_state[qtd_key] = ""  # limpa o campo pro próximo registro
+    qtd = _parse_num(qtd_txt, padrao=None)
+    if qtd is None or qtd <= 0:
+        if qtd_txt.strip():
+            st.toast(f"⚠️ Quantidade inválida para {material}: '{qtd_txt}'")
+        return
+    tipo_val = st.session_state.get(tipo_key, TIPOS_MA_POLIMENTO[0])
+    conferente_val = st.session_state.get(conf_key, "")
+    _registrar_ocorrencia_polimento(setor, polidora, material, qtd, tipo_val, conferente_val)
 
 def _card_polidora(setor, polidora, df_oc, df_discos):
     sub = df_oc[df_oc["polidora"] == polidora]
@@ -1038,7 +1084,7 @@ def _card_polidora(setor, polidora, df_oc, df_discos):
             cor_mat = _CORES_MATERIAL.get(material, c["texto_muted"])
             total_mat = sub[sub["material"] == material]["quantidade_num"].sum() if not sub.empty else 0.0
 
-            c_info, c_mais1, c_qtd, c_ok = st.columns([2.3, 0.8, 1.4, 0.7])
+            c_info, c_mais1, c_qtd = st.columns([2.3, 0.8, 1.9])
             with c_info:
                 st.markdown(
                     f'<div style="display:flex; align-items:center; gap:6px; margin-top:6px;">'
@@ -1053,18 +1099,13 @@ def _card_polidora(setor, polidora, df_oc, df_discos):
                              help=f"Registro de 1 toque para {material}"):
                     _registrar_ocorrencia_polimento(setor, polidora, material, 1, tipo, conferente)
             with c_qtd:
-                qtd_txt = st.text_input(
-                    f"Qtd lote {material}", key=f"pol_qtdmat_{polidora}_{material}",
-                    label_visibility="collapsed", placeholder="Qtd lote (ex: 7)",
+                qtd_key = f"pol_qtdmat_{polidora}_{material}"
+                st.text_input(
+                    f"Qtd lote {material}", key=qtd_key,
+                    label_visibility="collapsed", placeholder="Qtd + Enter",
+                    on_change=_on_lote_submit,
+                    args=(setor, polidora, material, qtd_key, f"pol_tipo_{polidora}", f"pol_conf_{polidora}"),
                 )
-            with c_ok:
-                if st.button("↵", key=f"pol_regmat_{polidora}_{material}", use_container_width=True,
-                             help="Registrar quantidade do lote"):
-                    qtd = _parse_num(qtd_txt, padrao=None)
-                    if qtd is None or qtd <= 0:
-                        st.error(f"Quantidade inválida para {material}.")
-                    else:
-                        _registrar_ocorrencia_polimento(setor, polidora, material, qtd, tipo, conferente)
 
         st.markdown("---")
         linha_disco = df_discos[df_discos["polidora"] == polidora]
@@ -1075,8 +1116,8 @@ def _card_polidora(setor, polidora, df_oc, df_discos):
             nova_prox = _proxima_data(HOJE_STR, "mensal", "").strftime("%d/%m/%Y")
             _atualizar("POLIMENTO_DISCOS", {"setor": setor, "polidora": polidora},
                        {"data_ultima_troca": HOJE_STR, "proxima_troca": nova_prox})
-            st.success(f"Troca do galão da {polidora} registrada hoje!")
-            st.cache_data.clear()
+            _load.clear()
+            st.toast(f"✅ Troca do galão da {polidora} registrada hoje!")
             st.rerun()
 
 def _tela_polimento(setor):
@@ -1099,16 +1140,19 @@ def _tela_polimento(setor):
     st.subheader("📊 Indicadores")
     g1, g2 = st.columns(2)
     with g1:
-        st.write("**Lentes Reprovadas por Polidora**")
         if not df_oc.empty:
-            st.bar_chart(df_oc.groupby("polidora")["quantidade_num"].sum())
+            fig1 = _grafico_barra(df_oc.groupby("polidora")["quantidade_num"].sum(), "Lentes Reprovadas por Polidora")
+            st.plotly_chart(fig1, use_container_width=True)
         else:
+            st.write("**Lentes Reprovadas por Polidora**")
             st.caption("Sem registros ainda.")
     with g2:
-        st.write("**Ranking de Perda/Rejeição por Material**")
         if not df_oc.empty:
-            st.bar_chart(df_oc.groupby("material")["quantidade_num"].sum().sort_values(ascending=False))
+            ranking_mat = df_oc.groupby("material")["quantidade_num"].sum().sort_values(ascending=False)
+            fig2 = _grafico_barra(ranking_mat, "Ranking de Perda/Rejeição por Material", _CORES_MATERIAL)
+            st.plotly_chart(fig2, use_container_width=True)
         else:
+            st.write("**Ranking de Perda/Rejeição por Material**")
             st.caption("Sem registros ainda.")
 
     st.markdown("---")
