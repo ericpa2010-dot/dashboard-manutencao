@@ -1023,13 +1023,16 @@ def _registrar_ocorrencia_polimento(setor, polidora, material, qtd, tipo, confer
     pode recarregar o app inteiro (Chamados, Dashboard, todos os setores);
     só invalida o cache de dados do Controle Setores, e o próprio ciclo de
     rerun que o Streamlit já faz depois de qualquer clique/Enter mostra o
-    dado fresco no próximo toque - sem tela piscando nem trocar de aba."""
+    dado fresco no próximo toque - sem tela piscando nem trocar de aba.
+    Também NÃO chama _load.clear(): isso limparia o cache de TODAS as
+    entidades (Insumos, Preparo Químico, etc.), forçando buscar tudo nas
+    planilhas de novo - caro. O cache de 10s expira sozinho; a gravação
+    em si (linha abaixo) já é imediata e definitiva."""
     qtd_fmt = int(qtd) if float(qtd).is_integer() else qtd
     _append("POLIMENTO_OCORRENCIAS", [
         setor, datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S"), polidora,
         material, qtd_fmt, tipo, (conferente or "").strip() or "—",
     ])
-    _load.clear()
     st.toast(f"✅ {polidora} · {material} · qtd {qtd_fmt}")
 
 def _on_lote_submit(setor, polidora, material, qtd_key, tipo_key, conf_key):
