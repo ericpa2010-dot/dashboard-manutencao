@@ -115,10 +115,46 @@ def css_global():
     #MainMenu {{visibility: hidden;}}
     footer {{visibility: hidden;}}
 
+    /* Variáveis de tema do PRÓPRIO Streamlit (as mesmas que o config.toml
+    [theme] define) - alguns componentes internos são renderizados com
+    Shadow DOM, que bloqueia CSS externo comum mas NÃO bloqueia variáveis
+    CSS (elas atravessam a fronteira do shadow tree). Setar isso aqui é o
+    que realmente alcança esses componentes; as regras !important abaixo
+    cobrem o resto (texto solto, legendas, botões). */
+    :root, .stApp {{
+        --primary-color: {c['primaria']};
+        --background-color: {c['fundo']};
+        --secondary-background-color: {c['superficie']};
+        --text-color: {c['texto']};
+    }}
+
     .stApp {{
         background-color: {c['fundo']};
         color: {c['texto']};
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }}
+
+    /* st.radio usado como barra de sub-abas (mais confiável que st.tabs,
+    que perde a seleção a cada re-execução do script) - visual de pílula. */
+    div[data-testid="stRadio"] > div[role="radiogroup"] {{
+        gap: 8px;
+        flex-wrap: wrap;
+    }}
+    div[data-testid="stRadio"] label {{
+        background-color: {c['superficie']};
+        border: 1px solid {c['borda']};
+        border-radius: 8px;
+        padding: 6px 14px;
+        margin: 0 !important;
+    }}
+    div[data-testid="stRadio"] label[data-checked="true"],
+    div[data-testid="stRadio"] label:has(input:checked) {{
+        background-color: {c['primaria']};
+        border-color: {c['primaria']};
+    }}
+    div[data-testid="stRadio"] label:has(input:checked) p {{
+        color: #FFFFFF !important;
+        font-weight: 700 !important;
     }}
 
     h1, h2, h3, h4, h5, h6, label, p, span, li, .stMarkdown,
