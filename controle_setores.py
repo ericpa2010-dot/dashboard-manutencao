@@ -1199,7 +1199,25 @@ def render():
         st.info(f"Nenhuma sub-aba configurada ainda para o setor **{setor_selecionado}**.")
         return
 
-    tabs = st.tabs([titulo for titulo, _ in abas_do_setor])
-    for tab, (_, funcao_tela) in zip(tabs, abas_do_setor):
-        with tab:
+    # st.tabs() tem uma limitação conhecida do Streamlit: perde a aba
+    # selecionada a cada re-execução do script (o que acontece a cada
+    # clique/Enter) e ainda renderiza o conteúdo de TODAS as sub-abas por
+    # baixo dos panos mesmo quando só uma está visível. st.radio guarda a
+    # escolha de verdade em session_state (não reseta sozinho) e só chama
+    # a função da sub-aba realmente selecionada - mais rápido também.
+    if len(abas_do_setor) == 1:
+        titulo_unico, funcao_unica = abas_do_setor[0]
+        st.subheader(titulo_unico)
+        funcao_unica(setor_selecionado)
+        return
+
+    titulos = [titulo for titulo, _ in abas_do_setor]
+    aba_escolhida = st.radio(
+        "Seção", titulos, key=f"cs_subaba_{setor_selecionado}",
+        horizontal=True, label_visibility="collapsed",
+    )
+    st.markdown("---")
+    for titulo, funcao_tela in abas_do_setor:
+        if titulo == aba_escolhida:
             funcao_tela(setor_selecionado)
+            break
